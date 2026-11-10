@@ -1,0 +1,169 @@
+import type { TrainerSample } from '../ble/trainer';
+import { ChallengeRun, type TrainerCommand } from './challengeEngine';
+import { RAMP_TEST, challengeById, type Challenge } from './challenges';
+
+const FTP = 200;
+
+/** Feed the run 1 Hz samples from `fn(elapsedSec, run)` until it's done or maxSec passes. */
+function ride(
+  run: ChallengeRun,
+  fn: (sec: number, run: ChallengeRun) => Partial<TrainerSample>,
+  maxSec = 7200,
+) {
+  const cmds: TrainerCommand[] = [...run.start()];
+  for (let sec = 0; sec <= maxSec && !run.done; sec++) {
+    const s = { t: sec * 1000, power: 0, cadence: 90, speedKph: 30, ...fn(sec, run) };
+    cmds.push(...run.update(s));
+  }
+  return cmds;
+}
+
+/** Rider who holds whatever the trainer asks (ERG) at 90 rpm. */
+const obedient = (_: number, run: ChallengeRun) => ({ power: run.snapshot().targetWatts ?? 0, cadence: 90 });
+
+const simple: Challenge = {
+  id: 'test',
+  name: 'Test',
+  description: '',
+  tier: 1,
+  minLevel: 1,
+  xpReward: 100,
+  repeatable: true,
+  steps: [
+    { label: 'wu', kind: 'warmup', durationSec: 10, mode: 'erg', targetPctFtp: 50 },
+    { label: 'w1', kind: 'work', durationSec: 10, mode: 'erg', targetPctFtp: 120 },
+    { label: 'r1', kind: 'rest', durationSec: 10, mode: 'erg', targetPctFtp: 50 },
+    { label: 'w2', kind: 'work', durationSec: 10, mode: 'erg', targetPctFtp: 120 },
+    { label: 'cd', kind: 'cooldown', durationSec: 10, mode: 'erg', targetPctFtp: 40 },
+  ],
+  success: { kind: 'completeAll' },
+};
+
+describe('ChallengeRun: completeAll (ERG)', () => {
+  it('passes when every interval is completed and emits ERG targets per step', () => {
+    const run = new ChallengeRun(simple, FTP);
+    const cmds = ride(run, obedient);
+    const s = run.snapshot();
+    expect(s.result?.passed).toBe(true);
+    expect(s.status).toBe('done');
+    const ergWatts = cmds.filter((c) => c.type === 'erg').map((c) => (c as { watts: number }).watts);
+    expect(ergWatts).toEqual([100, 240, 100, 240, 80]);
+    expect(cmds[cmds.length - 1]).toEqual({ type: 'free' });
+  });
+
+  it('fails when cadence drops below 60 rpm for 5 s in a work step', () => {
+    const run = new ChallengeRun(simple, FTP);
+    ride(run, (sec, r) => ({ ...obedient(sec, r), cadence: sec >= 12 ? 40 : 90 }));
+    const s = run.snapshot();
+    expect(s.result?.passed).toBe(false);
+    expect(s.result?.reason).toMatch(/cracked/);
+    expect(s.status).toBe('done');
+  });
+
+  it('a short cadence dip does not crack', () => {
+    const run = new ChallengeRun(simple, FTP);
+    ride(run, (sec, r) => ({ ...obedient(sec, r), cadence: sec >= 12 && sec < 15 ? 40 : 90 }));
+    expect(run.snapshot().result?.passed).toBe(true);
+  });
+
+  it('abort before completion is a fail; abort during cooldown keeps the pass', () => {
+    const a = new ChallengeRun(simple, FTP);
+    ride(a, obedient, 15);
+    a.abort();
+    expect(a.snapshot().result).toMatchObject({ passed: false, aborted: true });
+
+    const b = new ChallengeRun(simple, FTP);
+    ride(b, obedient, 42);
+    expect(b.snapshot().status).toBe('cooldown');
+    expect(b.abort()).toEqual([{ type: 'free' }]);
+    expect(b.snapshot().result?.passed).toBe(true);
+  });
+
+  it('handles big sample gaps (time warp) without skipping step commands', () => {
+    const run = new ChallengeRun(simple, FTP);
+    run.start();
+    run.update({ t: 0, power: 100, cadence: 90, speedKph: 0 });
+    const cmds = run.update({ t: 5000, power: 100, cadence: 90, speedKph: 0 });
+    expect(cmds).toEqual([]);
+    const cmds2 = run.update({ t: 10000, power: 100, cadence: 90, speedKph: 0 });
+    expect(cmds2).toEqual([{ type: 'erg', watts: 240 }]);
+  });
+});
+
+describe('ChallengeRun: bestAvg (free effort)', () => {
+  const sprint = challengeById('first-sprint')!; // 10 s ≥ 150% FTP = 300 W
+
+  it('passes as soon as the window average beats the target, then skips to cooldown', () => {
+    const run = new ChallengeRun(sprint, FTP);
+    const warmupSec = 300;
+    const cmds: TrainerCommand[] = [];
+    ride(run, (sec) => {
+      if (sec < warmupSec) return { power: 110 };
+      return { power: sec < warmupSec + 20 ? 320 : 150 };
+    }, warmupSec + 15);
+    const s = run.snapshot();
+    expect(s.result?.passed).toBe(true);
+    expect(s.status).toBe('cooldown');
+    expect(s.step.kind).toBe('cooldown');
+    void cmds;
+  });
+
+  it('switches the trainer to free-ride for the effort step', () => {
+    const run = new ChallengeRun(sprint, FTP);
+    const cmds = ride(run, () => ({ power: 110 }), 301);
+    expect(cmds).toContainEqual({ type: 'free' });
+  });
+
+  it('fails if the peak is never reached', () => {
+    const run = new ChallengeRun(sprint, FTP);
+    ride(run, () => ({ power: 250 }));
+    const r = run.snapshot().result!;
+    expect(r.passed).toBe(false);
+    expect(r.reason).toMatch(/250 W/);
+  });
+});
+
+describe('ChallengeRun: cadence', () => {
+  it('passes after holding the rpm, tolerating a brief dip', () => {
+    const run = new ChallengeRun(challengeById('spin-up')!, FTP);
+    ride(run, (sec) => ({ power: 120, cadence: sec >= 300 ? (sec === 320 ? 95 : 105) : 85 }), 370);
+    expect(run.snapshot().result?.passed).toBe(true);
+  });
+});
+
+describe('ChallengeRun: ramp test', () => {
+  it('computes FTP as 75% of best minute when the rider cracks', () => {
+    const run = new ChallengeRun(RAMP_TEST, FTP);
+    // Rider holds ERG until target exceeds 320 W, then cadence collapses.
+    ride(run, (_sec, r) => {
+      const target = r.snapshot().targetWatts ?? 0;
+      return target > 320 ? { power: 150, cadence: 30 } : { power: target, cadence: 90 };
+    });
+    const res = run.snapshot().result!;
+    // Steps: 100,112,...; last held step ≤ 320 is 316 W (50+6*18 = 158% → 316 W).
+    expect(res.bestMinutePower).toBe(316);
+    expect(res.newFtp).toBe(237);
+    expect(res.passed).toBe(true);
+    expect(run.snapshot().status).not.toBe('running');
+  });
+
+  it("'I'm done' ends the ramp into cooldown with ERG cooldown target", () => {
+    const run = new ChallengeRun(RAMP_TEST, FTP);
+    ride(run, obedient, 180 + 60 * 5);
+    const cmds = run.abort();
+    expect(cmds).toEqual([{ type: 'erg', watts: 90 }]);
+    expect(run.snapshot().status).toBe('cooldown');
+    expect(run.snapshot().result?.newFtp).toBeGreaterThan(0);
+  });
+});
+
+describe('promotion challenges', () => {
+  it('scale with gate level', () => {
+    const p5 = challengeById('promo-5')!;
+    const p20 = challengeById('promo-20')!;
+    expect(p5.promotionFor).toBe(5);
+    const work = (c: Challenge) => c.steps.filter((s) => s.kind === 'work');
+    expect(work(p20).length).toBeGreaterThan(work(p5).length);
+    expect(work(p20)[0].targetPctFtp!).toBeGreaterThan(work(p5)[0].targetPctFtp!);
+  });
+});
