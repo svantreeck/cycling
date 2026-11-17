@@ -159,7 +159,8 @@ class Pod {
   private onSyncTx(bytes: Uint8Array) {
     const reply = handshakeReply(bytes);
     if (reply !== 'unknown' && reply !== this.info.lock) {
-      this.set({ lock: reply });
+      // Only the left side ever locks, so a locked reply also tells us which side this is.
+      this.set(reply === 'locked' && this.info.side === 'unknown' ? { lock: reply, side: 'left' } : { lock: reply });
       this.log('info', reply === 'locked' ? 'LOCKED (Zwift unlock needed for this side; it may stop after ~1 min)' : 'unlocked');
     }
     this.log('in', `sync: ${toHex(bytes)}`);
@@ -232,7 +233,13 @@ class Pod {
 
   private set(patch: Partial<PodInfo>) {
     this.info = { ...this.info, ...patch };
+    if (patch.side) this.owner.sideLearned(this);
     this.owner.changed();
+  }
+
+  /** @internal set by the controller when the other pod's side is known */
+  assumeSide(side: PodSide) {
+    if (this.info.side === 'unknown') this.info = { ...this.info, side };
   }
 }
 
@@ -278,6 +285,9 @@ export class ZwiftClickController implements Controller {
     }
     try {
       await pod.connect();
+      // A side identified before this pod joined now tells us this pod's side too.
+      for (const p of this.pods) this.sideLearned(p);
+      this.changed();
     } catch (e) {
       this.pods = this.pods.filter((p) => p !== pod);
       this.changed();
@@ -341,6 +351,13 @@ export class ZwiftClickController implements Controller {
     this.logLines = [...this.logLines.slice(-(LOG_MAX - 1)), line];
     this.changes.emit();
   }
+  /** @internal With two pods, knowing one side tells us the other. */
+  sideLearned(pod: Pod) {
+    if (this.pods.length !== 2 || pod.info.side === 'unknown') return;
+    const other = this.pods.find((p) => p !== pod);
+    other?.assumeSide(pod.info.side === 'left' ? 'right' : 'left');
+  }
+
   /** @internal */
   changed() {
     this.changes.emit();

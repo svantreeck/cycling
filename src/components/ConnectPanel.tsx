@@ -357,7 +357,7 @@ function ZwiftClickPanel({ click }: { click: ZwiftClickController }) {
   useGame((s) => s.controllerRev); // re-render on pod changes
   const { connectZwiftClick, disconnectController } = useGame();
   const pods = click.podInfo;
-  const hasLeft = pods.some((p) => p.side === 'left');
+  const bothSides = pods.filter((p) => p.state === 'connected' || p.state === 'reconnecting').length >= 2 || pods.some((p) => p.side === 'left');
 
   return (
     <div className="zwift">
@@ -383,7 +383,7 @@ function ZwiftClickPanel({ click }: { click: ZwiftClickController }) {
           </div>
         ))}
       </div>
-      {!hasLeft && <div className="muted small">Right side only: + shifts up, B shifts down.</div>}
+      {!bothSides && <div className="muted small">Right side only: + shifts up, B shifts down.</div>}
     </div>
   );
 }
