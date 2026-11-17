@@ -1,4 +1,5 @@
-import type { TrainingPlan } from '../game/coach';
+import type { Feel, TrainingPlan } from '../game/coach';
+import { statsFromRides, type Stats } from '../game/stats';
 import { initialLevelState, type LevelState } from '../game/xp';
 
 export type SpeedUnit = 'kmh' | 'mph';
@@ -19,7 +20,7 @@ export interface RideSummary {
   /** seconds per zone, index 0 = Z1 */
   zoneSec: number[];
   xpEarned: number;
-  challenges: { id: string; passed: boolean; xp: number }[];
+  challenges: { id: string; passed: boolean; xp: number; feel?: Feel }[];
   /** training stress score; missing on rides saved before it was tracked */
   tss?: number;
 }
@@ -46,6 +47,8 @@ export interface Profile {
   bountyClaimedOn?: string;
   /** the rider's goal and weekly availability; the coach uses defaults when unset */
   plan?: TrainingPlan;
+  /** lifetime fitness-stat points per system (never trimmed, unlike `rides`) */
+  stats: Stats;
 }
 
 export const defaultProfile = (): Profile => ({
@@ -56,6 +59,7 @@ export const defaultProfile = (): Profile => ({
   levels: initialLevelState(),
   completed: {},
   rides: [],
+  stats: statsFromRides([]),
   cosmetics: { kitColor: '#95a5a6' },
   settings: { onboarded: false, speedUnit: 'kmh' },
 });
@@ -72,6 +76,8 @@ export function migrate(raw: unknown): Profile {
     levels: { ...base.levels, ...(p.levels ?? {}) },
     cosmetics: { ...base.cosmetics, ...(p.cosmetics ?? {}) },
     settings: { ...base.settings, ...(p.settings ?? {}) },
+    // Stats arrived after rides were already being saved: seed them from the saved rides.
+    stats: { ...statsFromRides(p.rides ?? []), ...(p.stats ?? {}) },
     schemaVersion: SCHEMA_VERSION,
   };
 }

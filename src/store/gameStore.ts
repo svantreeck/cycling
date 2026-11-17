@@ -4,8 +4,10 @@ import { MockTrainer } from '../ble/mockTrainer';
 import type { Trainer, TrainerSample, Unsubscribe } from '../ble/trainer';
 import { tiersReached, type AvatarTier } from '../game/avatarTiers';
 import { ChallengeRun, type RunResult, type RunSnapshot, type TrainerCommand } from '../game/challengeEngine';
-import { challengeById, dailyBounty, RAMP_TEST, type Challenge } from '../game/challenges';
+import { challengeById, dailyBounty, RAMP_TEST, type Challenge, type FitnessSystem } from '../game/challenges';
+import type { Feel } from '../game/coach';
 import { challengeReward } from '../game/rewards';
+import { addStats, statGains, statLevel, SYSTEMS } from '../game/stats';
 import { addXp, clearPromotion, isBlockedAtGate, rideXp, xpToNext, type AddXpResult } from '../game/xp';
 import { zoneFor } from '../game/zones';
 import {
@@ -48,12 +50,13 @@ export interface LiveRide {
   lastT: number | null;
   idleMs: number;
   paused: boolean;
-  challenges: { id: string; passed: boolean; xp: number }[];
+  challenges: { id: string; passed: boolean; xp: number; feel?: Feel }[];
 }
 
 export type Celebration =
   | { kind: 'levelUp'; levels: number[]; tiers: AvatarTier[] }
-  | { kind: 'gate'; level: number };
+  | { kind: 'gate'; level: number }
+  | { kind: 'stat'; system: FitnessSystem; level: number };
 
 export interface RunOutcome {
   challenge: Challenge;
@@ -61,6 +64,8 @@ export interface RunOutcome {
   xp: number;
   lines: string[];
   oldFtp: number;
+  /** post-workout check-in, once answered */
+  feel?: Feel;
 }
 
 interface GameState {
@@ -88,6 +93,8 @@ interface GameState {
   startChallenge(id: string): void;
   abortChallenge(): void;
   dismissOutcome(): void;
+  /** Post-workout check-in: record how the last workout felt (the coach uses it to pick the next rung). */
+  rateWorkout(feel: Feel): void;
   dismissCelebration(): void;
   /** Turn free-ride ERG on/off or change its target. Ignored while a challenge controls the trainer. */
   setFreeErg(patch: Partial<FreeErg>): void;
@@ -345,9 +352,19 @@ export const useGame = create<GameState>((set, get) => {
         challenges: ride.challenges,
         tss: Math.round(ride.stress / 36),
       };
-      const next = ride.elapsedSec >= 60 ? { ...profile, rides: [...profile.rides, summary] } : profile;
+      let next = profile;
+      const statCelebrations: Celebration[] = [];
+      if (ride.elapsedSec >= 60) {
+        const stats = addStats(profile.stats, statGains(summary.zoneSec));
+        for (const sys of SYSTEMS) {
+          const before = statLevel(profile.stats[sys]).level;
+          const after = statLevel(stats[sys]).level;
+          if (after > before) statCelebrations.push({ kind: 'stat', system: sys, level: after });
+        }
+        next = { ...profile, rides: [...profile.rides, summary], stats };
+      }
       persist(next);
-      set({ ride: null, profile: next, lastRide: summary });
+      set((s) => ({ ride: null, profile: next, lastRide: summary, celebrations: [...s.celebrations, ...statCelebrations] }));
     },
 
     startChallenge: (id) => {
@@ -380,6 +397,31 @@ export const useGame = create<GameState>((set, get) => {
     },
 
     dismissOutcome: () => set({ outcome: null, runSnap: null }),
+
+    rateWorkout: (feel) => {
+      const { outcome, ride, profile, lastRide } = get();
+      if (!outcome) return;
+      const id = outcome.challenge.id;
+      const tag = <T extends { id: string; feel?: Feel }>(list: T[]): T[] => {
+        const i = list.map((c) => c.id).lastIndexOf(id);
+        return i < 0 ? list : list.map((c, j) => (j === i ? { ...c, feel } : c));
+      };
+      if (ride) {
+        set({ outcome: { ...outcome, feel }, ride: { ...ride, challenges: tag(ride.challenges) } });
+        return;
+      }
+      // The ride already ended: tag it in the saved history.
+      const rides = [...profile.rides];
+      const last = rides[rides.length - 1];
+      if (last) rides[rides.length - 1] = { ...last, challenges: tag(last.challenges) };
+      const next = { ...profile, rides };
+      persist(next);
+      set({
+        outcome: { ...outcome, feel },
+        profile: next,
+        lastRide: lastRide ? { ...lastRide, challenges: tag(lastRide.challenges) } : lastRide,
+      });
+    },
     dismissCelebration: () => set((s) => ({ celebrations: s.celebrations.slice(1) })),
 
     setFreeErg: (patch) => {

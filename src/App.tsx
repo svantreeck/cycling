@@ -4,6 +4,7 @@ import { Avatar } from './components/Avatar';
 import { ConnectionChip, ConnectPanel, SimControls } from './components/ConnectPanel';
 import { CelebrationModal } from './components/LevelUpModal';
 import { ProfileScreen } from './components/Profile';
+import { StatsPanel } from './components/StatsPanel';
 import { TodayCard } from './components/TodayCard';
 import { WeekCard } from './components/WeekCard';
 import { RideScreen } from './components/RideHUD';
@@ -71,6 +72,7 @@ function Home() {
           <div className="hero-name">{profile.name}</div>
           <div className="hero-title">{tier.title}</div>
           <XPBar levels={profile.levels} />
+          <StatsPanel compact />
           <div className="hero-stats">
             <span>FTP <strong>{profile.ftp} W</strong></span>
             <span>Rides <strong>{profile.rides.length}</strong></span>

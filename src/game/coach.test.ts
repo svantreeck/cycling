@@ -136,6 +136,24 @@ describe('suggestToday', () => {
     expect(s.reason).toMatch(/ended it early/);
   });
 
+  it('check-in: easy → two rungs up, hard → repeat; two early endings → one rung down', () => {
+    const around = (last: RideLog[]) => tested([ride(WED, 9, { id: 'wk-thr-2x10' }), ...last, ride(WED, 3, { id: 'wk-vo2-4x3' })]);
+    const base = challengeById('wk-ss-3x10')!.workout!.rung;
+    const ssRide = (feel?: 'easy' | 'right' | 'hard', passed = true) => {
+      const r = ride(WED, 6, { id: 'wk-ss-3x10', passed });
+      r.challenges[0].feel = feel;
+      return r;
+    };
+    expect(suggestToday(around([ssRide('easy')]), WED).workout.workout!.rung).toBe(base + 2);
+    expect(suggestToday(around([ssRide('right')]), WED).workout.workout!.rung).toBe(base + 1);
+    const hard = suggestToday(around([ssRide('hard')]), WED);
+    expect(hard.workout.id).toBe('wk-ss-3x10');
+    expect(hard.reason).toMatch(/felt hard/);
+    const twice = suggestToday(around([ride(WED, 12, { id: 'wk-ss-3x10', passed: false }), ssRide(undefined, false)]), WED);
+    expect(twice.workout.workout!.rung).toBe(base - 1);
+    expect(twice.reason).toMatch(/tough twice/);
+  });
+
   it('keeps weekday sessions within 75 minutes', () => {
     // top sweet spot rungs are ~90 min; progression from 3×15 must stay ≤ 75 min on a weekday
     const s = suggestToday(tested([ride(WED, 9, { id: 'wk-thr-2x10' }), ride(WED, 6, { id: 'wk-ss-3x15' }), ride(WED, 3, { id: 'wk-vo2-4x3' })]), WED);

@@ -1,4 +1,5 @@
 import { promotionChallenge } from '../game/challenges';
+import { SYSTEM_INFO } from '../game/stats';
 import { useGame } from '../store/gameStore';
 import { Avatar } from './Avatar';
 
@@ -33,6 +34,25 @@ export function CelebrationModal() {
               See challenge
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (c.kind === 'stat') {
+    const info = SYSTEM_INFO[c.system];
+    return (
+      <div className="modal-backdrop">
+        <div className="modal levelup stat-up">
+          <div className="big-emoji">{info.icon}</div>
+          <div className="levelup-burst" style={{ color: info.color }}>
+            {info.name} up!
+          </div>
+          <div className="levelup-num">Lv {c.level}</div>
+          <p className="muted">{info.blurb}</p>
+          <button className="btn primary" onClick={dismissCelebration}>
+            Nice!
+          </button>
         </div>
       </div>
     );

@@ -5,6 +5,9 @@ import { RAMP_TEST, WORKOUTS, challengeById, totalDurationSec, type Challenge, t
  * Pure functions over saved rides so it is easy to test and to extend with goals and availability later.
  */
 
+/** Post-workout check-in: how hard the session felt. */
+export type Feel = 'easy' | 'right' | 'hard';
+
 /** The parts of a saved ride the coach needs (a subset of persistence's RideSummary). */
 export interface RideLog {
   startedAt: number;
@@ -13,7 +16,7 @@ export interface RideLog {
   tss?: number;
   /** seconds per power zone, index 0 = Z1 */
   zoneSec: number[];
-  challenges: { id: string; passed: boolean }[];
+  challenges: { id: string; passed: boolean; feel?: Feel }[];
 }
 
 export interface CoachProfile {
@@ -104,6 +107,7 @@ export function isHardRide(r: RideLog): boolean {
 interface Attempt {
   workout: Challenge;
   passed: boolean;
+  feel?: Feel;
   day: number;
 }
 
@@ -112,7 +116,7 @@ function workoutAttempts(rides: RideLog[]): Attempt[] {
   for (const r of [...rides].sort((a, b) => a.startedAt - b.startedAt)) {
     for (const c of r.challenges) {
       const w = challengeById(c.id);
-      if (w?.workout) out.push({ workout: w, passed: c.passed, day: dayIndex(r.startedAt) });
+      if (w?.workout) out.push({ workout: w, passed: c.passed, feel: c.feel, day: dayIndex(r.startedAt) });
     }
   }
   return out;
@@ -269,12 +273,17 @@ export function weekProgress(rides: RideLog[], plan: TrainingPlan, now = Date.no
 // ---- picking ------------------------------------------------------------------
 
 /**
- * Next rung for a category: one up after a completed session, the same rung after one that was ended early,
- * and the first full-length rung if it has never been ridden. Never longer than `maxMin` if avoidable.
+ * Next rung for a category, from the last attempt and its check-in:
+ * - completed and felt easy → two rungs up; felt right (or no check-in) → one up; felt hard → repeat it
+ * - ended early → repeat it; ended early twice in a row → one rung down
+ * - never ridden → the first full-length rung.
+ * Never longer than `maxMin` if avoidable.
  */
 function progressIn(cat: WorkoutCategory, attempts: Attempt[], maxMin: number, filter: (w: Challenge) => boolean = () => true) {
   const rungs = ladder(cat).filter(filter);
-  const last = [...attempts].reverse().find((a) => a.workout.workout!.category === cat && filter(a.workout));
+  const inCat = attempts.filter((a) => a.workout.workout!.category === cat && filter(a.workout));
+  const last = inCat[inCat.length - 1];
+  const prev = inCat[inCat.length - 2];
   let idx: number;
   let why: string;
   if (!last) {
@@ -282,12 +291,28 @@ function progressIn(cat: WorkoutCategory, attempts: Attempt[], maxMin: number, f
     why = 'A good first step on this ladder.';
   } else {
     const at = Math.max(0, rungs.findIndex((w) => w.id === last.workout.id));
-    idx = last.passed ? Math.min(at + 1, rungs.length - 1) : at;
-    why = last.passed
-      ? idx > at
-        ? `One step up from ${last.workout.name}.`
-        : `You've reached the top of this ladder. Nice!`
-      : `Another go at ${last.workout.name}; you ended it early last time.`;
+    const top = rungs.length - 1;
+    const name = last.workout.name;
+    if (!last.passed) {
+      if (prev && !prev.passed && at > 0) {
+        idx = at - 1;
+        why = `${name} has been tough twice, so one step back to build up to it.`;
+      } else {
+        idx = at;
+        why = `Another go at ${name}; you ended it early last time.`;
+      }
+    } else if (last.feel === 'hard') {
+      idx = at;
+      why = `${name} felt hard last time, so repeat it to lock in the gains.`;
+    } else {
+      idx = Math.min(at + (last.feel === 'easy' ? 2 : 1), top);
+      why =
+        idx === at
+          ? `You've reached the top of this ladder. Nice!`
+          : last.feel === 'easy'
+            ? `${name} felt easy, so two steps up.`
+            : `One step up from ${name}.`;
+    }
   }
   const wanted = idx;
   while (idx > 0 && minutes(rungs[idx]) > maxMin) idx--;

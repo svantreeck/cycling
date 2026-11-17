@@ -39,6 +39,16 @@ describe('persistence', () => {
     expect(loadProfile(st).ftp).toBe(280);
   });
 
+  it('seeds fitness stats from saved rides for profiles saved before stats existed', () => {
+    const old = { ...defaultProfile(), rides: [{ zoneSec: [0, 3600, 0, 0, 0, 0, 0] }] } as Record<string, unknown>;
+    delete old.stats;
+    const p = importProfile(JSON.stringify(old));
+    expect(p.stats.endurance).toBeGreaterThan(0);
+    // existing stats are kept as-is
+    const kept = importProfile(JSON.stringify({ ...defaultProfile(), stats: { ...defaultProfile().stats, tempo: 99 } }));
+    expect(kept.stats.tempo).toBe(99);
+  });
+
   it('rejects non-profile imports', () => {
     expect(() => importProfile('{"hello":1}')).toThrow();
   });

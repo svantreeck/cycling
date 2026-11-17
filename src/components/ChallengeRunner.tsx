@@ -89,6 +89,7 @@ export function ChallengeRunner() {
 function OutcomeCard({ onClose }: { onClose: () => void }) {
   const o = useGame((s) => s.outcome)!;
   const ftp = useGame((s) => s.profile.ftp);
+  const rateWorkout = useGame((s) => s.rateWorkout);
   const noun = o.challenge.workout ? 'Workout' : 'Challenge';
   return (
     <div className={`card outcome ${o.result.passed ? 'pass' : 'fail'}`}>
@@ -107,6 +108,29 @@ function OutcomeCard({ onClose }: { onClose: () => void }) {
         ))}
       </ul>
       {o.xp > 0 && <div className="xp-burst">+{o.xp} XP</div>}
+      {o.challenge.workout && o.result.passed && (
+        <div className="checkin">
+          <div className="checkin-q">How did that feel?</div>
+          <div className="checkin-opts">
+            {(
+              [
+                ['easy', '😌 Easy'],
+                ['right', '👌 Just right'],
+                ['hard', '🥵 Really hard'],
+              ] as const
+            ).map(([f, label]) => (
+              <button key={f} className={`chip ${o.feel === f ? 'active' : ''}`} onClick={() => rateWorkout(f)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {o.feel && (
+            <div className="muted small">
+              {o.feel === 'easy' ? 'Noted: the coach will step up faster.' : o.feel === 'hard' ? "Noted: you'll repeat this level before moving on." : 'Noted: next time is one step up.'}
+            </div>
+          )}
+        </div>
+      )}
       {o.challenge.promotionFor && o.result.passed && <div className="promoted">🎖️ You're promoted! Levels past {o.challenge.promotionFor} are open.</div>}
       <button className="btn primary" onClick={onClose}>
         Keep riding

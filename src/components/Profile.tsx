@@ -2,13 +2,17 @@ import { useRef, useState } from 'react';
 import { AVATAR_TIERS, unlockedKitColors } from '../game/avatarTiers';
 import { useGame } from '../store/gameStore';
 import { speedLabel } from '../units';
+import { GOALS } from '../game/coach';
 import { Avatar } from './Avatar';
+import { PlanSetup } from './PlanSetup';
+import { StatsPanel } from './StatsPanel';
 import { fmtClock, ZoneDistribution } from './RideHUD';
 
 export function ProfileScreen() {
   const { profile, updateProfile, exportJson, importJson, resetProfile } = useGame();
   const [ftpInput, setFtpInput] = useState(String(profile.ftp));
   const fileRef = useRef<HTMLInputElement>(null);
+  const [editingPlan, setEditingPlan] = useState(false);
   const level = profile.levels.level;
   const colors = unlockedKitColors(level);
 
@@ -76,6 +80,25 @@ export function ProfileScreen() {
         <div className="muted small">
           Lifetime XP {Math.floor(profile.levels.totalXp).toLocaleString()} · Promotions passed: {profile.levels.promotionsCleared.length}
         </div>
+      </div>
+
+      <div className="card">
+        <h3>Fitness stats</h3>
+        <p className="muted small">Every ride adds to the systems it trains, based on your time in each power zone. Stats never go down.</p>
+        <StatsPanel />
+      </div>
+
+      <div className="card">
+        <h3>Training plan</h3>
+        <p className="muted small">
+          {profile.plan
+            ? `${GOALS[profile.plan.goal].name} · ${profile.plan.minutesByDay.filter((m) => m > 0).length} riding days a week`
+            : 'No plan yet. The coach uses sensible defaults until you set one.'}
+        </p>
+        <button className="btn" onClick={() => setEditingPlan(true)}>
+          {profile.plan ? 'Edit plan' : 'Set up my plan'}
+        </button>
+        {editingPlan && <PlanSetup onClose={() => setEditingPlan(false)} />}
       </div>
 
       <div className="card">

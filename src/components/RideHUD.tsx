@@ -1,5 +1,6 @@
 import { tierFor } from '../game/avatarTiers';
 import { fmtDur } from '../game/challenges';
+import { statGains, SYSTEM_INFO, SYSTEMS } from '../game/stats';
 import { ZONES, zoneFor } from '../game/zones';
 import { useEffect, useState } from 'react';
 import { ERG_MAX_W, ERG_MIN_W, useGame } from '../store/gameStore';
@@ -207,6 +208,22 @@ function RideSummaryCard() {
         <div><span className="muted">Challenges</span> {r.challenges.filter((c) => c.passed).length}/{r.challenges.length}</div>
       </div>
       <ZoneDistribution zoneSec={r.zoneSec} />
+      <StatGains zoneSec={r.zoneSec} />
+    </div>
+  );
+}
+
+function StatGains({ zoneSec }: { zoneSec: number[] }) {
+  const g = statGains(zoneSec);
+  const gained = SYSTEMS.filter((s) => g[s] >= 0.5);
+  if (!gained.length) return null;
+  return (
+    <div className="stat-gains">
+      {gained.map((s) => (
+        <span key={s} className="pill" style={{ color: SYSTEM_INFO[s].color }}>
+          {SYSTEM_INFO[s].icon} {SYSTEM_INFO[s].name} +{Math.round(g[s])}
+        </span>
+      ))}
     </div>
   );
 }
