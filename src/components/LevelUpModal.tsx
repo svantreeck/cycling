@@ -1,12 +1,26 @@
+import { useEffect } from 'react';
 import { roman } from '../game/challenges';
 import { SYSTEM_INFO } from '../game/stats';
 import { useGame } from '../store/gameStore';
 import { Avatar } from './Avatar';
 
+/** Mid-ride celebrations close themselves after this long, so they don't cover the ride. */
+export const RIDE_AUTO_DISMISS_MS = 5000;
+
 export function CelebrationModal() {
-  const { celebrations, dismissCelebration, profile } = useGame();
+  const { celebrations, dismissCelebration, profile, ride } = useGame();
   const c = celebrations[0];
+  const auto = !!c && !!ride;
+
+  useEffect(() => {
+    if (!auto) return;
+    const t = setTimeout(dismissCelebration, RIDE_AUTO_DISMISS_MS);
+    return () => clearTimeout(t);
+  }, [c, auto, dismissCelebration]);
+
   if (!c) return null;
+  // Shrinking bar under the button while a mid-ride celebration counts down (re-keyed per celebration).
+  const countdown = auto ? <div key={celebrations.length} className="auto-dismiss" style={{ animationDuration: `${RIDE_AUTO_DISMISS_MS}ms` }} /> : null;
 
   if (c.kind === 'promotion') {
     return (
@@ -28,6 +42,7 @@ export function CelebrationModal() {
           <button className="btn primary" onClick={dismissCelebration}>
             Let's go!
           </button>
+          {countdown}
         </div>
       </div>
     );
@@ -47,6 +62,7 @@ export function CelebrationModal() {
           <button className="btn primary" onClick={dismissCelebration}>
             Nice!
           </button>
+          {countdown}
         </div>
       </div>
     );
@@ -76,6 +92,7 @@ export function CelebrationModal() {
         <button className="btn primary" onClick={dismissCelebration}>
           Awesome!
         </button>
+        {countdown}
       </div>
     </div>
   );

@@ -372,3 +372,5 @@ input[type='range'] { padding: 0; }
 .flag-tip code { font-size: 0.75rem; background: rgba(255, 255, 255, 0.06); padding: 1px 5px; border-radius: 4px; user-select: all; word-break: break-all; }
 .slot-main { width: 100%; font-size: 0.85rem; padding: 8px 10px; }
 .slot-links { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.auto-dismiss { height: 3px; border-radius: 2px; background: var(--accent); margin-top: 10px; transform-origin: left; animation: auto-dismiss linear forwards; }
+@keyframes auto-dismiss { from { transform: scaleX(1); } to { transform: scaleX(0); } }
