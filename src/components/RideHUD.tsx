@@ -5,10 +5,11 @@ import { statGains, SYSTEM_INFO, SYSTEMS } from '../game/stats';
 import { ZONES, zoneFor } from '../game/zones';
 import { useEffect, useState } from 'react';
 import { ERG_MAX_W, ERG_MIN_W, useGame } from '../store/gameStore';
-import { convertSpeed, speedLabel } from '../units';
+import { convertDistance, convertSpeed, distanceLabel, speedLabel } from '../units';
 import { Avatar } from './Avatar';
 import { ChallengeRunner } from './ChallengeRunner';
 import { ConnectPanel, SimControls } from './ConnectPanel';
+import { RideExport } from './RideExport';
 import { XPBar } from './XPBar';
 
 export function RideScreen() {
@@ -236,19 +237,25 @@ function GearShifter() {
 
 function RideSummaryCard() {
   const r = useGame((s) => s.lastRide)!;
+  const unit = useGame((s) => s.profile.settings.speedUnit);
   return (
     <div className="card summary">
       <h3>Ride complete 🎉</h3>
       <div className="summary-grid">
         <div><span className="muted">Time</span> {fmtClock(r.durationSec)}</div>
+        {r.distanceM != null && (
+          <div><span className="muted">Distance</span> {convertDistance(r.distanceM, unit).toFixed(1)} {distanceLabel(unit)}</div>
+        )}
         <div><span className="muted">Work</span> {r.kj} kJ</div>
         <div><span className="muted">Avg</span> {r.avgPower} W</div>
         <div><span className="muted">Max</span> {r.maxPower} W</div>
+        {r.tss != null && <div><span className="muted">TSS</span> {r.tss}</div>}
         <div><span className="muted">XP</span> +{r.xpEarned}</div>
         <div><span className="muted">Challenges</span> {r.challenges.filter((c) => c.passed).length}/{r.challenges.length}</div>
       </div>
       <ZoneDistribution zoneSec={r.zoneSec} />
       <StatGains zoneSec={r.zoneSec} />
+      <RideExport ride={r} />
     </div>
   );
 }

@@ -23,6 +23,8 @@ export interface RideSummary {
   challenges: { id: string; passed: boolean; xp: number; feel?: Feel }[];
   /** training stress score; missing on rides saved before it was tracked */
   tss?: number;
+  /** metres (trainer-reported speed, or estimated from power); missing on older rides */
+  distanceM?: number;
 }
 
 export interface ChallengeRecord {

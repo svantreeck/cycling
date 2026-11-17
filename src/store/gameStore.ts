@@ -14,6 +14,7 @@ import { addStats, statGains, statLevel, SYSTEMS } from '../game/stats';
 import { addXp, rideXp, type AddXpResult } from '../game/xp';
 import { zoneFor } from '../game/zones';
 import { keepScreenAwake } from '../wakeLock';
+import { saveTrack, TrackRecorder } from '../strava/track';
 import {
   defaultProfile,
   exportProfile,
@@ -140,6 +141,8 @@ export function activeBounty(profile: Profile): Challenge | undefined {
 
 let unsubs: Unsubscribe[] = [];
 let lastSave = 0;
+/** Second-by-second track of the current ride (kept outside the store: it grows every second). */
+let track = new TrackRecorder();
 
 export const useGame = create<GameState>((set, get) => {
   const persist = (profile: Profile) => {
@@ -246,6 +249,7 @@ export const useGame = create<GameState>((set, get) => {
       const idleMs = idle ? ride.idleMs + dt : 0;
       const paused = idleMs >= IDLE_PAUSE_MS;
       ride = { ...ride, lastT: sample.t, idleMs, paused };
+      track.add(sample, dt, !paused && dt > 0);
       if (!paused && dt > 0) {
         const zone = zoneFor(sample.power, profile.ftp);
         const zoneSec = [...ride.zoneSec];
@@ -378,6 +382,7 @@ export const useGame = create<GameState>((set, get) => {
     startRide: () => {
       if (get().ride) return;
       keepScreenAwake(true);
+      track = new TrackRecorder();
       set({
         ride: {
           startedAt: Date.now(),
@@ -415,6 +420,7 @@ export const useGame = create<GameState>((set, get) => {
         xpEarned: Math.round(ride.xp),
         challenges: ride.challenges,
         tss: Math.round(ride.stress / 36),
+        distanceM: Math.round(track.distance),
       };
       let next = profile;
       const statCelebrations: Celebration[] = [];
@@ -426,6 +432,7 @@ export const useGame = create<GameState>((set, get) => {
           if (after > before) statCelebrations.push({ kind: 'stat', system: sys, level: after });
         }
         next = { ...profile, rides: [...profile.rides, summary], stats };
+        if (track.points.length) saveTrack({ rideId: summary.id, startedAt: ride.startedAt, points: track.points });
       }
       persist(next);
       set((s) => ({ ride: null, profile: next, lastRide: summary, celebrations: [...s.celebrations, ...statCelebrations] }));

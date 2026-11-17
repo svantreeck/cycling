@@ -100,7 +100,7 @@ input[type='range'] { padding: 0; }
 .zone .zone-name { display: block; font-weight: 500; font-size: 0.6rem; }
 .zone.active { opacity: 1; transform: scaleY(1.25); }
 .ride-actions { display: flex; gap: 12px; justify-content: center; margin: 14px 0; }
-.summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0; }
+.summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0; }
 .zonedist { display: flex; height: 10px; border-radius: 4px; overflow: hidden; background: #0c0f1d; }
 
 /* runner */
@@ -327,3 +327,8 @@ input[type='range'] { padding: 0; }
 .pod.state-lost .dot { background: var(--danger); }
 .ble-log { max-height: 260px; overflow: auto; background: #0a0d1a; border-radius: 8px; padding: 8px; font-size: 0.72rem; line-height: 1.35; white-space: pre-wrap; word-break: break-all; margin: 0; }
 .erg .gears { margin: 10px 0 6px; }
+
+/* Ride export */
+.ride-export { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.btn.strava { background: #fc4c02; border-color: #fc4c02; color: #fff; text-decoration: none; }
+@media (max-width: 520px) { .summary-grid { grid-template-columns: repeat(2, 1fr); } }

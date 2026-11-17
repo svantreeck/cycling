@@ -8,6 +8,7 @@ import { Avatar } from './Avatar';
 import { PlanSetup } from './PlanSetup';
 import { StatsPanel } from './StatsPanel';
 import { fmtClock, ZoneDistribution } from './RideHUD';
+import { RideExport } from './RideExport';
 
 export function ProfileScreen() {
   const { profile, updateProfile, exportJson, importJson, resetProfile } = useGame();
@@ -123,6 +124,7 @@ export function ProfileScreen() {
 
       <div className="card">
         <h3>Ride history</h3>
+        <p className="muted small">The last few rides keep a second-by-second file you can upload to Strava or other training sites.</p>
         {profile.rides.length === 0 ? (
           <p className="muted">No rides yet.</p>
         ) : (
@@ -135,6 +137,7 @@ export function ProfileScreen() {
                 <th>kJ</th>
                 <th>XP</th>
                 <th>Zones</th>
+                <th>File</th>
               </tr>
             </thead>
             <tbody>
@@ -147,6 +150,9 @@ export function ProfileScreen() {
                   <td>+{r.xpEarned}</td>
                   <td style={{ width: 160 }}>
                     <ZoneDistribution zoneSec={r.zoneSec} />
+                  </td>
+                  <td>
+                    <RideExport ride={r} compact />
                   </td>
                 </tr>
               ))}
