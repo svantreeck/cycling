@@ -290,3 +290,10 @@ input[type='range'] { padding: 0; }
 .bw.past { background: var(--accent); opacity: 0.6; }
 .bw.now { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
 .bw.rec.now, .bw.rec.past { background: #2ecc71; }
+
+/* avatar mood */
+.av-sweat { animation: sweat 1.8s ease-in infinite; }
+.av-energy { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes sweat { 0% { opacity: 0; transform: translateY(-2px); } 20% { opacity: 1; } 100% { opacity: 0; transform: translateY(9px); } }
+.mood-pill { align-self: center; margin-top: -6px; }
+.hero-avatar { display: flex; flex-direction: column; }

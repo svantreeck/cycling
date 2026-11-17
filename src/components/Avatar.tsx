@@ -8,6 +8,8 @@ interface Props {
   speedKph?: number;
   /** pedal gently when idle (menus) */
   idleSpin?: boolean;
+  /** how fresh the rider is, from their training form; changes posture and face */
+  mood?: Mood;
   width?: number;
   className?: string;
 }
@@ -30,7 +32,7 @@ const HEAD_BOT = { x: 210, y: 102 };
 const STEM = { x: 215, y: 90 };
 const HIP = { x: 126, y: 76 };
 const SHOULDER = { x: 175, y: 40 };
-const HEAD = { x: 187, y: 27 };
+const HEAD_BASE = { x: 187, y: 27 };
 const HAND = { x: 217, y: 90 }; // on the hoods
 const CRANK = 16;
 const THIGH = 52;
@@ -40,6 +42,16 @@ const FOREARM = 35;
 const SKIN = '#f1c27d';
 
 type Pt = { x: number; y: number };
+
+export type Mood = 'fresh' | 'neutral' | 'tired' | 'exhausted';
+
+/** Head offset per mood: fresh riders hold their head up, tired ones let it drop. */
+const HEAD_OFFSET: Record<Mood, Pt> = {
+  fresh: { x: 0, y: -1 },
+  neutral: { x: 0, y: 0 },
+  tired: { x: 1, y: 4 },
+  exhausted: { x: 3, y: 8 },
+};
 
 /** Two-bone IK: joint position between `a` and `b`. bend = -1 bends left of a→b (knee forward), +1 right (elbow down). */
 function joint(a: Pt, b: Pt, l1: number, l2: number, bend: 1 | -1): Pt {
@@ -126,7 +138,8 @@ function Leg({ theta, far, kitShorts }: { theta: number; far: boolean; kitShorts
   );
 }
 
-export function Avatar({ level, kitColor, cadence = 0, speedKph = 0, idleSpin = false, width = 320, className }: Props) {
+export function Avatar({ level, kitColor, cadence = 0, speedKph = 0, idleSpin = false, width = 320, className, mood = 'neutral' }: Props) {
+  const HEAD = { x: HEAD_BASE.x + HEAD_OFFSET[mood].x, y: HEAD_BASE.y + HEAD_OFFSET[mood].y };
   const layers = unlockedLayers(level);
   const has = (l: CosmeticLayer) => layers.has(l);
   const effCadence = cadence > 0 ? cadence : idleSpin ? 45 : 0;
@@ -269,9 +282,12 @@ export function Avatar({ level, kitColor, cadence = 0, speedKph = 0, idleSpin = 
       )}
       {has('sunglasses') ? (
         <rect x={HEAD.x + 3} y={HEAD.y - 3} width={9} height={4} rx={2} fill="#111" />
+      ) : mood === 'exhausted' ? (
+        <line x1={HEAD.x + 5} y1={HEAD.y - 1} x2={HEAD.x + 9} y2={HEAD.y - 0.5} stroke="#222" strokeWidth={1.4} strokeLinecap="round" />
       ) : (
         <circle cx={HEAD.x + 7} cy={HEAD.y - 1} r={1.3} fill="#222" />
       )}
+      <MoodFace head={HEAD} mood={mood} />
 
       {has('sparkle') && (
         <g className="av-sparkle" fill="#fffde7">
@@ -283,5 +299,41 @@ export function Avatar({ level, kitColor, cadence = 0, speedKph = 0, idleSpin = 
         </g>
       )}
     </svg>
+  );
+}
+
+/** Mouth, sweat and energy marks that show how fresh the rider is. */
+function MoodFace({ head: h, mood }: { head: Pt; mood: Mood }) {
+  if (mood === 'neutral') return null;
+  const drop = (x: number, y: number, delay: number) => (
+    <path
+      key={`${x}-${y}`}
+      className="av-sweat"
+      style={{ animationDelay: `${delay}s` }}
+      d={`M ${x} ${y} q 3 4.6 0 7 q -3 -2.4 0 -7 Z`}
+      fill="#9fd8ff"
+    />
+  );
+  return (
+    <g>
+      {mood === 'fresh' && (
+        <>
+          <path d={`M ${h.x + 5} ${h.y + 5} q 3 2.5 6 0`} stroke="#5d3a1a" strokeWidth={1.3} fill="none" strokeLinecap="round" />
+          <g className="av-energy" stroke="#7dffb0" strokeWidth={2} strokeLinecap="round">
+            <line x1={h.x + 18} y1={h.y - 14} x2={h.x + 23} y2={h.y - 19} />
+            <line x1={h.x + 21} y1={h.y - 6} x2={h.x + 28} y2={h.y - 8} />
+          </g>
+        </>
+      )}
+      {mood === 'tired' && drop(h.x + 14, h.y - 4, 0)}
+      {mood === 'exhausted' && (
+        <>
+          <ellipse cx={h.x + 9} cy={h.y + 5.5} rx={1.6} ry={2.2} fill="#5d3a1a" />
+          {drop(h.x + 14, h.y - 5, 0)}
+          {drop(h.x + 17, h.y + 2, 0.6)}
+          {drop(h.x - 13, h.y + 3, 1.2)}
+        </>
+      )}
+    </g>
   );
 }

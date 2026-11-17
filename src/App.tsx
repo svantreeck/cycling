@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChallengeBoard } from './components/ChallengeBoard';
-import { Avatar } from './components/Avatar';
+import { Avatar, type Mood } from './components/Avatar';
+import { trainingLoad, type TrainingLoad } from './game/coach';
 import { ConnectionChip, ConnectPanel, SimControls } from './components/ConnectPanel';
 import { CelebrationModal } from './components/LevelUpModal';
 import { ProfileScreen } from './components/Profile';
@@ -56,6 +57,14 @@ export default function App() {
   );
 }
 
+/** Avatar mood and label for each form state. */
+const MOOD: Record<TrainingLoad['formLabel'], { mood: Mood; label: string }> = {
+  Fresh: { mood: 'fresh', label: '😄 Fresh and ready' },
+  Neutral: { mood: 'neutral', label: '🙂 Feeling good' },
+  Building: { mood: 'tired', label: '😅 Tired, building fitness' },
+  Overreaching: { mood: 'exhausted', label: '🥵 Exhausted: time to rest' },
+};
+
 function Home() {
   const { profile, conn, setScreen, startRide, startChallenge, ride } = useGame();
   const tier = tierFor(profile.levels.level);
@@ -63,11 +72,17 @@ function Home() {
   const bounty = activeBounty(profile);
   const connected = conn === 'connected';
   const lastRide = profile.rides[profile.rides.length - 1];
+  const load = useMemo(() => trainingLoad(profile.rides), [profile.rides]);
 
   return (
     <div className="home">
       <section className="hero card">
-        <Avatar level={profile.levels.level} kitColor={profile.cosmetics.kitColor} idleSpin width={360} />
+        <div className="hero-avatar">
+          <Avatar level={profile.levels.level} kitColor={profile.cosmetics.kitColor} idleSpin width={360} mood={MOOD[load.formLabel].mood} />
+          <span className="pill mood-pill" title={`Form ${load.form}: fitness minus fatigue from your recent rides.`}>
+            {MOOD[load.formLabel].label}
+          </span>
+        </div>
         <div className="hero-info">
           <div className="hero-name">{profile.name}</div>
           <div className="hero-title">{tier.title}</div>
