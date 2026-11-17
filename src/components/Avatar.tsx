@@ -12,24 +12,26 @@ interface Props {
   className?: string;
 }
 
-// Geometry (viewBox 0 0 320 220). Proportions follow a real road bike: wheelbase ≈ 2.75 × wheel
-// radius, torso ≈ 58% of leg length, back ≈ 36° from horizontal (between racing ~20° and relaxed ~40°).
+// Geometry (viewBox 0 0 320 220). Proportions follow a real road bike: leg ≈ 2.5 × wheel radius,
+// 73° head angle, torso ≈ 58% of leg length, back ≈ 36° from horizontal (between racing ~20° and relaxed ~40°).
+// Tire clearance: the tire (WHEEL_R + 2.5 stroke) keeps ≥ 3px from the seat tube and down tube even with
+// the thicker TT-bike tubes, and the fork crown (HEAD_BOT) sits above the front tire.
 // Saddle height (HIP) is set so the knee keeps ~30° of flexion at the bottom of the stroke:
 // |HIP − BB| + CRANK ≈ 99.5 = law-of-cosines leg reach at a 150° knee. Moving HIP/BB/CRANK/THIGH/SHIN
 // changes this, so re-check it if you change any of them.
-const WHEEL_R = 44;
-const R = { x: 100, y: 150 };
-const F = { x: 221, y: 150 };
+const WHEEL_R = 40;
+const R = { x: 97, y: 150 };
+const F = { x: 230, y: 150 };
 const BB = { x: 153, y: 155 };
 const ST_TOP = { x: 133, y: 105 }; // seat tube / top tube junction
 const SADDLE = { x: 125, y: 82 };
-const HEAD_TOP = { x: 206, y: 96 };
-const HEAD_BOT = { x: 209, y: 110 };
-const STEM = { x: 214, y: 92 };
+const HEAD_TOP = { x: 207, y: 92 };
+const HEAD_BOT = { x: 210, y: 102 };
+const STEM = { x: 215, y: 90 };
 const HIP = { x: 126, y: 76 };
 const SHOULDER = { x: 175, y: 40 };
 const HEAD = { x: 187, y: 27 };
-const HAND = { x: 216, y: 92 }; // on the hoods
+const HAND = { x: 217, y: 90 }; // on the hoods
 const CRANK = 16;
 const THIGH = 52;
 const SHIN = 51;
