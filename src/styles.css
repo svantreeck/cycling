@@ -326,3 +326,4 @@ input[type='range'] { padding: 0; }
 .pod.state-reconnecting .dot, .pod.state-connecting .dot { background: #f1c40f; }
 .pod.state-lost .dot { background: var(--danger); }
 .ble-log { max-height: 260px; overflow: auto; background: #0a0d1a; border-radius: 8px; padding: 8px; font-size: 0.72rem; line-height: 1.35; white-space: pre-wrap; word-break: break-all; margin: 0; }
+.erg .gears { margin: 10px 0 6px; }

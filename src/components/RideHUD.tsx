@@ -57,7 +57,11 @@ export function RideScreen() {
 
       <ZoneBar power={power} ftp={profile.ftp} />
 
-      <GearControl />
+      {run && !run.ergActive && runSnap?.status !== 'done' && conn === 'connected' && (
+        <div className="card">
+          <GearShifter />
+        </div>
+      )}
 
       {runSnap && <ChallengeRunner />}
 
@@ -122,32 +126,36 @@ function ErgControl() {
           </button>
         </div>
       </div>
-      <div className="erg-row">
-        <button className="btn" onClick={() => setFreeErg({ watts: freeErg.watts - ERG_STEP })}>
-          −{ERG_STEP}
-        </button>
-        <label className="erg-input">
-          <input
-            type="number"
-            min={ERG_MIN_W}
-            max={ERG_MAX_W}
-            step={ERG_STEP}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={commitDraft}
-            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-          />
-          <span className="unit">W</span>
-        </label>
-        <button className="btn" onClick={() => setFreeErg({ watts: freeErg.watts + ERG_STEP })}>
-          +{ERG_STEP}
-        </button>
-        <span className="muted small">{Math.round((freeErg.watts / profile.ftp) * 100)}% FTP</span>
-      </div>
+      {freeErg.on ? (
+        <div className="erg-row">
+          <button className="btn" onClick={() => setFreeErg({ watts: freeErg.watts - ERG_STEP })}>
+            −{ERG_STEP}
+          </button>
+          <label className="erg-input">
+            <input
+              type="number"
+              min={ERG_MIN_W}
+              max={ERG_MAX_W}
+              step={ERG_STEP}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commitDraft}
+              onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+            />
+            <span className="unit">W</span>
+          </label>
+          <button className="btn" onClick={() => setFreeErg({ watts: freeErg.watts + ERG_STEP })}>
+            +{ERG_STEP}
+          </button>
+          <span className="muted small">{Math.round((freeErg.watts / profile.ftp) * 100)}% FTP</span>
+        </div>
+      ) : (
+        <GearShifter />
+      )}
       <div className="muted small">
         {freeErg.on
-          ? 'The trainer holds this wattage whatever gear or cadence you ride.'
-          : 'Sim mode: flat road, you set the effort with your gears. Switch to ERG to hold the target above.'}
+          ? 'ERG: the trainer holds this wattage whatever gear or cadence you ride. Shifting nudges it by 5 W.'
+          : 'Sim: you set the effort by shifting. Switch to ERG to hold a fixed wattage.'}
       </div>
     </div>
   );
@@ -197,13 +205,12 @@ function ZoneBar({ power, ftp }: { power: number; ftp: number }) {
   );
 }
 
-/** Virtual gears for free riding. Hidden while ERG holds the watts (shifting nudges the target instead). */
-function GearControl() {
-  const { gear, run, runSnap, freeErg, conn, controllerAction, controllerConn } = useGame();
-  const ergHolds = run ? run.ergActive : freeErg.on;
-  if (conn !== 'connected' || ergHolds || runSnap?.status === 'done') return null;
+/** Virtual gear shifter (− / gear / +), used in Sim mode and in workout steps that aren't under ERG. */
+function GearShifter() {
+  const { gear, controllerAction, controllerConn } = useGame();
+  const grade = gradeForGear(gear);
   return (
-    <div className="card gears">
+    <div className="gears">
       <button className="btn" onClick={() => controllerAction('shiftDown')} disabled={gear <= 1} aria-label="Shift down">
         −
       </button>
@@ -220,8 +227,8 @@ function GearControl() {
         +
       </button>
       <span className="muted small gear-hint">
-        {controllerConn === 'connected' ? 'Shift with your controller' : 'Shift with − / + keys'} · {gradeForGear(gear) >= 0 ? '+' : ''}
-        {gradeForGear(gear)}% grade
+        {controllerConn === 'connected' ? 'Shift with your controller' : 'Shift with the − / + keys'} ·{' '}
+        {grade === 0 ? 'flat road' : `${grade > 0 ? '+' : ''}${grade}% grade`}
       </span>
     </div>
   );
