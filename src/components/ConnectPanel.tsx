@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { isWebBluetoothAvailable } from '../ble/ftms';
 import { MockTrainer } from '../ble/mockTrainer';
 import { MockController, type ControllerAction } from '../ble/controller';
-import { inspectDevice, ZwiftClickController } from '../ble/zwiftClick';
-import { BUTTON_LABEL } from '../ble/zwiftProtocol';
+import { ZwiftClickController } from '../ble/zwiftClick';
 import { AUTO_RECONNECT_FLAG, isChromeWithFlagOption } from '../ble/remembered';
 import { useGame } from '../store/gameStore';
 
@@ -299,55 +298,12 @@ function ShifterSlot() {
   );
 }
 
-const ACTION_LABEL: Record<ControllerAction, string> = {
-  shiftUp: 'shift up',
-  shiftDown: 'shift down',
-  harder: 'harder',
-  easier: 'easier',
-  skip: 'skip',
-  pause: 'pause',
-  resume: 'resume',
-  select: 'select',
-};
-
-/** Status, button tester and diagnostics for directly connected Zwift controllers. */
+/** Status of directly connected Zwift controllers: which sides are connected, lock state and battery. */
 function ZwiftClickPanel({ click }: { click: ZwiftClickController }) {
-  useGame((s) => s.controllerRev); // re-render on pod/log changes
+  useGame((s) => s.controllerRev); // re-render on pod changes
   const { connectZwiftClick, disconnectController } = useGame();
-  const [lastPress, setLastPress] = useState<string | null>(null);
-  const [showLog, setShowLog] = useState(false);
-  const [inspectLog, setInspectLog] = useState<string[]>([]);
-
-  useEffect(
-    () =>
-      click.onButton(({ button, action }) => {
-        setLastPress(`${BUTTON_LABEL[button]} → ${action ? ACTION_LABEL[action] : 'no action'}`);
-      }),
-    [click],
-  );
-
   const pods = click.podInfo;
   const hasLeft = pods.some((p) => p.side === 'left');
-  const lines = [...click.log.map((l) => `${new Date(l.at).toLocaleTimeString()} ${l.pod} ${l.dir === 'in' ? '←' : l.dir === 'out' ? '→' : '·'} ${l.text}`), ...inspectLog];
-  const logRef = useRef<HTMLPreElement>(null);
-  const [copied, setCopied] = useState<string | null>(null);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(lines.join('\n'));
-      setCopied('Copied');
-    } catch {
-      // Some iOS browsers block clipboard access: select the log so it can be copied by hand.
-      const sel = window.getSelection();
-      if (logRef.current && sel) {
-        sel.selectAllChildren(logRef.current);
-        setCopied('Selected: use Copy from the menu');
-      }
-    }
-  };
-  const inspect = (sendRideOn: boolean) =>
-    void inspectDevice((t) => setInspectLog((l) => [...l.slice(-199), `${new Date().toLocaleTimeString()} inspect · ${t}`]), sendRideOn).catch((e) =>
-      setInspectLog((l) => [...l, `inspect failed: ${(e as Error).message}`]),
-    );
 
   return (
     <div className="zwift">
@@ -368,45 +324,12 @@ function ZwiftClickPanel({ click }: { click: ZwiftClickController }) {
             <span className="muted small">
               {p.side !== 'unknown' ? `${p.side} side` : 'press a button to identify'} · {p.state}
               {p.lock === 'locked' && ' · 🔒 locked (needs Zwift unlock)'}
-              {p.lock === 'unlocked' && ' · unlocked'}
               {p.battery != null && ` · 🔋${p.battery}%`}
             </span>
           </div>
         ))}
       </div>
-      <div className="small">
-        {lastPress ? (
-          <>
-            Last press: <strong>{lastPress}</strong>
-          </>
-        ) : (
-          <span className="muted">Press a button to test it.</span>
-        )}
-        {!hasLeft && <span className="muted"> · Right side only: + shifts up, B shifts down.</span>}
-      </div>
-      <div className="row">
-        <button className="link small" onClick={() => setShowLog((v) => !v)}>
-          {showLog ? 'Hide' : 'Show'} Bluetooth log ({lines.length})
-        </button>
-        {showLog && (
-          <>
-            <button className="btn ghost small" onClick={() => void copy()}>
-              {copied ?? 'Copy log'}
-            </button>
-            <button className="btn ghost small" onClick={() => inspect(false)} title="Connect to any device (e.g. your KICKR) and log its services and Zwift notifications">
-              Inspect a device…
-            </button>
-            <button className="btn ghost small" onClick={() => inspect(true)} title="Same, and send the Zwift RideOn handshake">
-              Inspect + RideOn…
-            </button>
-          </>
-        )}
-      </div>
-      {showLog && (
-        <pre ref={logRef} className="ble-log">
-          {lines.slice(-300).join('\n') || 'Nothing yet.'}
-        </pre>
-      )}
+      {!hasLeft && <div className="muted small">Right side only: + shifts up, B shifts down.</div>}
     </div>
   );
 }
