@@ -3,12 +3,18 @@
  * and the Cycling Power Service (CPS). Kept free of Web Bluetooth so they can be unit-tested.
  */
 
-export const FTMS_SERVICE = 0x1826;
-export const INDOOR_BIKE_DATA = 0x2ad2;
-export const FTMS_CONTROL_POINT = 0x2ad9;
-export const FTMS_FEATURE = 0x2acc;
-export const CPS_SERVICE = 0x1818;
-export const CPS_MEASUREMENT = 0x2a63;
+/**
+ * Full 128-bit form of a 16-bit Bluetooth SIG UUID. Web Bluetooth accepts bare numbers, but iOS Web Bluetooth
+ * browsers (e.g. Bluefy) reject them, so always pass full lowercase strings.
+ */
+export const uuid16 = (n: number) => `0000${n.toString(16).padStart(4, '0')}-0000-1000-8000-00805f9b34fb`;
+
+export const FTMS_SERVICE = uuid16(0x1826);
+export const INDOOR_BIKE_DATA = uuid16(0x2ad2);
+export const FTMS_CONTROL_POINT = uuid16(0x2ad9);
+export const FTMS_FEATURE = uuid16(0x2acc);
+export const CPS_SERVICE = uuid16(0x1818);
+export const CPS_MEASUREMENT = uuid16(0x2a63);
 
 export interface IndoorBikeData {
   speedKph?: number;

@@ -5,6 +5,8 @@ import {
   parseControlPointResponse,
   parseCyclingPowerMeasurement,
   parseIndoorBikeData,
+  FTMS_SERVICE,
+  uuid16,
 } from './ftmsParsers';
 
 const dv = (bytes: number[]) => new DataView(new Uint8Array(bytes).buffer);
@@ -88,5 +90,12 @@ describe('cycling power fallback', () => {
   it('computes cadence across u16 rollover', () => {
     // 1 rev in 0.5 s = 120 rpm, wrapping time counter
     expect(cadenceFromCrank({ revs: 0xffff, time: 0xff00 }, { revs: 0, time: 0x0100 })).toBe(120);
+  });
+});
+
+describe('uuid16', () => {
+  it('expands 16-bit SIG UUIDs to the full lowercase form', () => {
+    expect(uuid16(0x1826)).toBe('00001826-0000-1000-8000-00805f9b34fb');
+    expect(FTMS_SERVICE).toBe('00001826-0000-1000-8000-00805f9b34fb');
   });
 });

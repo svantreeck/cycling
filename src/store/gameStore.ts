@@ -628,8 +628,11 @@ export const useGame = create<GameState>((set, get) => {
 });
 
 function errorMessage(e: unknown): string {
-  if (e instanceof DOMException && e.name === 'NotFoundError') return 'No trainer selected.';
-  return e instanceof Error ? e.message : String(e);
+  if (e instanceof DOMException && e.name === 'NotFoundError') return 'No device selected.';
+  if (e instanceof Error) return e.message;
+  // Some browsers (e.g. Bluefy on iOS) reject with bare codes; say where it came from.
+  console.warn('Bluetooth error', e);
+  return `Bluetooth error: ${typeof e === 'object' ? JSON.stringify(e) : String(e)}`;
 }
 
 // Dev-only handle for debugging in the console: `game.getState()`.
