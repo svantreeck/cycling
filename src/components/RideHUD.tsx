@@ -13,7 +13,7 @@ import { RideExport } from './RideExport';
 import { XPBar } from './XPBar';
 
 export function RideScreen() {
-  const { sample, ride, profile, startRide, endRide, runSnap, run, conn, lastRide, setScreen, updateProfile, freeErg } = useGame();
+  const { sample, ride, profile, startRide, endRide, runSnap, run, conn, lastRide, setScreen, updateProfile, freeErg, hrm, hrmConn, heartRate } = useGame();
   const unit = profile.settings.speedUnit;
   const toggleUnit = () => updateProfile({ settings: { ...profile.settings, speedUnit: unit === 'kmh' ? 'mph' : 'kmh' } });
   const power = sample?.power ?? 0;
@@ -35,7 +35,7 @@ export function RideScreen() {
         <div className="ride-title">{tierFor(profile.levels.level).title}</div>
       </div>
 
-      <div className="hud">
+      <div className={`hud ${hrm ? 'with-hr' : ''}`}>
         <Metric
           label="Power"
           value={power}
@@ -44,6 +44,25 @@ export function RideScreen() {
           highlight={zone.color}
           sub={freeErg.on && !run ? `${pctFtp}% FTP · ERG ${freeErg.watts} W` : `${pctFtp}% FTP`}
         />
+        {hrm && (
+          <Metric
+            label="Heart rate"
+            value={heartRate ?? '–'}
+            unit="bpm"
+            highlight="#ff5c6c"
+            sub={
+              hrmConn === 'reconnecting'
+                ? 'reconnecting…'
+                : hrmConn === 'lost'
+                  ? 'monitor lost'
+                  : ride && ride.hrSec >= 30
+                    ? `avg ${Math.round(ride.hrBeats / ride.hrSec)}`
+                    : heartRate == null
+                      ? 'no signal'
+                      : undefined
+            }
+          />
+        )}
         <Metric label="Cadence" value={Math.round(sample?.cadence ?? 0)} unit="rpm" />
         <Metric
           label="Speed"
@@ -249,6 +268,9 @@ function RideSummaryCard() {
         <div><span className="muted">Work</span> {r.kj} kJ</div>
         <div><span className="muted">Avg</span> {r.avgPower} W</div>
         <div><span className="muted">Max</span> {r.maxPower} W</div>
+        {r.avgHr != null && (
+          <div><span className="muted">Heart rate</span> {r.avgHr} avg · {r.maxHr} max</div>
+        )}
         {r.tss != null && <div><span className="muted">TSS</span> {r.tss}</div>}
         <div><span className="muted">XP</span> +{r.xpEarned}</div>
         <div><span className="muted">Challenges</span> {r.challenges.filter((c) => c.passed).length}/{r.challenges.length}</div>

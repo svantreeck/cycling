@@ -23,6 +23,9 @@ export interface RideSummary {
   tss?: number;
   /** metres (trainer-reported speed, or estimated from power); missing on older rides */
   distanceM?: number;
+  /** heart rate (bpm), when a monitor was connected */
+  avgHr?: number;
+  maxHr?: number;
 }
 
 export interface ChallengeRecord {

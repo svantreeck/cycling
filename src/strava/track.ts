@@ -12,6 +12,8 @@ export interface TrackPoint {
   speedKph: number;
   /** cumulative metres */
   distanceM: number;
+  /** beats per minute, when a heart-rate monitor was connected */
+  hr?: number;
 }
 
 export interface Track {
@@ -38,7 +40,7 @@ export class TrackRecorder {
   private distanceM = 0;
 
   /** `moving` is false while the ride is auto-paused, so pauses show as gaps (Strava then excludes them). */
-  add(sample: { t: number; power: number; cadence: number; speedKph: number }, dtMs: number, moving: boolean) {
+  add(sample: { t: number; power: number; cadence: number; speedKph: number }, dtMs: number, moving: boolean, hr?: number | null) {
     if (this.t0 == null) this.t0 = sample.t;
     if (!moving) return;
     const speedKph = sample.speedKph > 0 ? sample.speedKph : speedFromPower(sample.power);
@@ -52,6 +54,7 @@ export class TrackRecorder {
       cadence: Math.round(sample.cadence),
       speedKph: Math.round(speedKph * 10) / 10,
       distanceM: Math.round(this.distanceM * 10) / 10,
+      ...(hr ? { hr } : {}),
     });
   }
 
@@ -60,7 +63,7 @@ export class TrackRecorder {
   }
 }
 
-// Stored compactly as arrays: [sec, power, cadence, speedKph, distanceM].
+// Stored compactly as arrays: [sec, power, cadence, speedKph, distanceM, hr (0 = none)].
 type StoredTrack = { rideId: string; startedAt: number; p: number[][] };
 
 function readAll(storage: Storage | undefined): StoredTrack[] {
@@ -77,7 +80,7 @@ export function saveTrack(track: Track, storage: Storage | undefined = globalThi
   const stored: StoredTrack = {
     rideId: track.rideId,
     startedAt: track.startedAt,
-    p: track.points.map((q) => [q.sec, q.power, q.cadence, q.speedKph, q.distanceM]),
+    p: track.points.map((q) => [q.sec, q.power, q.cadence, q.speedKph, q.distanceM, q.hr ?? 0]),
   };
   let all = [...readAll(storage).filter((t) => t.rideId !== track.rideId), stored].slice(-MAX_TRACKS);
   // If storage is full, drop the oldest tracks until it fits.
@@ -97,7 +100,7 @@ export function loadTrack(rideId: string, storage: Storage | undefined = globalT
   return {
     rideId: t.rideId,
     startedAt: t.startedAt,
-    points: t.p.map(([sec, power, cadence, speedKph, distanceM]) => ({ sec, power, cadence, speedKph, distanceM })),
+    points: t.p.map(([sec, power, cadence, speedKph, distanceM, hr]) => ({ sec, power, cadence, speedKph, distanceM, ...(hr ? { hr } : {}) })),
   };
 }
 

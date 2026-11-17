@@ -17,6 +17,7 @@ export interface RememberedDevices {
   trainer?: RememberedDevice;
   /** Zwift controller sides, most recent last */
   shifters: RememberedDevice[];
+  heartRate?: RememberedDevice;
 }
 
 export const DEVICES_KEY = 'cyclingquest.devices';
@@ -52,6 +53,15 @@ export function rememberShifter(dev: RememberedDevice, storage: Storage | undefi
 
 export function forgetTrainer(storage: Storage | undefined = globalThis.localStorage) {
   const { trainer: _, ...rest } = loadRemembered(storage);
+  save(rest, storage);
+}
+
+export function rememberHeartRate(dev: RememberedDevice, storage: Storage | undefined = globalThis.localStorage) {
+  save({ ...loadRemembered(storage), heartRate: dev }, storage);
+}
+
+export function forgetHeartRate(storage: Storage | undefined = globalThis.localStorage) {
+  const { heartRate: _, ...rest } = loadRemembered(storage);
   save(rest, storage);
 }
 

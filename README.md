@@ -20,6 +20,8 @@ or a subscription.
   pass/fail challenges. The trainer holds the target watts (ERG mode). Workouts adapt to how hard you say they felt.
 - **Free ride with virtual gears:** 24 virtual gears that change the simulated grade. Shift them with a Zwift Click or
   the keyboard.
+- **Heart rate:** pair a Bluetooth heart-rate monitor to see it live during rides. Average and max appear in the ride
+  summary, and heart rate is included in exported rides.
 - **Export your rides:** each ride is recorded second by second and can be exported as a `.tcx` file. Upload it to
   Strava, intervals.icu, TrainingPeaks or Garmin Connect.
 
@@ -32,6 +34,7 @@ or a subscription.
 | Other smart trainers that use the standard Bluetooth FTMS protocol (most current Wahoo, Tacx, Elite, Saris and JetBlack models) | Should work, untested |
 | Power meters or trainers with only the Bluetooth Cycling Power service | Should work read-only (no ERG), untested |
 | Zwift Ride and Zwift Play controllers, original Zwift Click | Same protocol family, untested |
+| Heart-rate monitors using the standard Bluetooth Heart Rate service (chest straps, arm bands, watches broadcasting HR) | Should work: shown live and saved in exported rides |
 
 If you try something on the untested list, please open an issue to say whether it worked.
 
@@ -55,7 +58,8 @@ Cadence Quest needs **Web Bluetooth**:
    - The right side always works: **+** shifts up and **B** shifts down.
    - The left side may need to be unlocked by the Zwift app every so often. Without that it stops after about a minute,
      and Cadence Quest reconnects it automatically.
-4. Next time, the app remembers your devices and offers one-tap **Reconnect** buttons. Chrome can also reconnect them
+4. Optional: connect a heart-rate monitor. Wear it first so it wakes up.
+5. Next time, the app remembers your devices and offers one-tap **Reconnect** buttons. Chrome can also reconnect them
    automatically if you enable `chrome://flags/#enable-web-bluetooth-new-permissions-backend`.
 
 There's also a built-in **simulator** (trainer and controller) if you want to look around without a bike.

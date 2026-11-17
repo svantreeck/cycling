@@ -45,6 +45,7 @@ export function ConnectPanel() {
       <div className="device-grid">
         <TrainerSlot />
         <ShifterSlot />
+        <HeartRateSlot />
       </div>
       <AutoReconnectTip />
     </div>
@@ -55,7 +56,7 @@ export function ConnectPanel() {
 function AutoReconnectTip() {
   const { remembered, conn, controllerConn } = useGame();
   const [hidden, setHidden] = useState(() => localStorage.getItem('cyclingquest.hideFlagTip') === '1');
-  const hasRemembered = !!remembered.trainer || remembered.shifters.length > 0;
+  const hasRemembered = !!remembered.trainer || remembered.shifters.length > 0 || !!remembered.heartRate;
   if (hidden || !hasRemembered || !isChromeWithFlagOption() || (conn === 'connected' && controllerConn === 'connected')) return null;
   return (
     <p className="muted small flag-tip">
@@ -70,6 +71,46 @@ function AutoReconnectTip() {
         Hide
       </button>
     </p>
+  );
+}
+
+/** A device slot before anything is connected: the main connect button, then smaller options on one line. */
+function SlotConnect(props: {
+  label: string;
+  onConnect: () => void;
+  onOther?: () => void;
+  simLabel: string;
+  onSim: () => void;
+  onForget?: () => void;
+  disabled: boolean;
+  busy: boolean;
+  hint?: string;
+  extra?: React.ReactNode;
+}) {
+  const { label, onConnect, onOther, simLabel, onSim, onForget, disabled, busy, hint, extra } = props;
+  return (
+    <>
+      <button className="btn primary slot-main" disabled={disabled || busy} onClick={onConnect} title={onOther ? 'Opens the picker showing only this device' : undefined}>
+        {busy ? 'Connecting…' : label}
+      </button>
+      <div className="slot-links">
+        {onOther && (
+          <button className="btn ghost small" disabled={disabled || busy} onClick={onOther}>
+            Other…
+          </button>
+        )}
+        <button className="btn ghost small" disabled={busy} onClick={onSim}>
+          {simLabel}
+        </button>
+        {onForget && (
+          <button className="link small" onClick={onForget}>
+            Forget
+          </button>
+        )}
+        {extra}
+      </div>
+      {hint && <p className="muted small">{hint}</p>}
+    </>
   );
 }
 
@@ -113,38 +154,17 @@ function TrainerSlot() {
           </div>
         </>
       ) : (
-        <>
-          <div className="row">
-            {last ? (
-              <>
-                <button className="btn primary" disabled={!bt || conn === 'connecting'} onClick={() => void connectBluetooth(last.name)} title="Opens the picker showing only this trainer">
-                  {conn === 'connecting' ? 'Connecting…' : `Reconnect ${last.name}`}
-                </button>
-                <button className="btn ghost small" disabled={!bt || conn === 'connecting'} onClick={() => void connectBluetooth()}>
-                  Other…
-                </button>
-              </>
-            ) : (
-              <button className="btn primary" disabled={!bt || conn === 'connecting'} onClick={() => void connectBluetooth()}>
-                {conn === 'connecting' ? 'Connecting…' : 'Connect trainer'}
-              </button>
-            )}
-            <button className="btn ghost small" disabled={conn === 'connecting'} onClick={() => void connectMock()}>
-              Simulator
-            </button>
-          </div>
-          <p className="muted small">
-            {autoStatus.trainer ?? (last ? 'Close other apps using it first.' : 'Close Zwift, the Wahoo app or anything else using the trainer first.')}
-            {last && !autoStatus.trainer && (
-              <>
-                {' '}
-                <button className="link" onClick={() => forgetDevices('trainer')}>
-                  Forget
-                </button>
-              </>
-            )}
-          </p>
-        </>
+        <SlotConnect
+          label={last ? `Reconnect ${last.name}` : 'Connect trainer'}
+          onConnect={() => void connectBluetooth(last?.name)}
+          onOther={last ? () => void connectBluetooth() : undefined}
+          simLabel="Simulator"
+          onSim={() => void connectMock()}
+          onForget={last ? () => forgetDevices('trainer') : undefined}
+          disabled={!bt}
+          busy={conn === 'connecting'}
+          hint={autoStatus.trainer ?? (last ? undefined : 'Close Zwift, the Wahoo app or anything else using the trainer first.')}
+        />
       )}
     </section>
   );
@@ -210,6 +230,48 @@ export function SimControls() {
   );
 }
 
+/** Heart-rate monitor: any strap, arm band or watch broadcasting the standard Bluetooth heart rate service. */
+function HeartRateSlot() {
+  const { hrm, hrmConn, heartRate, connectHeartRate, connectMockHeartRate, disconnectHeartRate, remembered, autoStatus, forgetDevices } = useGame();
+  const bt = isWebBluetoothAvailable();
+  const last = remembered.heartRate;
+  const busy = hrmConn === 'connecting';
+  const dot = hrmConn === 'reconnecting' ? 'connecting' : hrmConn;
+
+  return (
+    <section className={`device-slot ${hrmConn === 'lost' ? 'warn' : ''}`}>
+      <h4>
+        ❤️ Heart rate <span className={`slot-dot conn-${dot}`}><span className="dot" /></span>
+      </h4>
+      {hrm && hrmConn !== 'connecting' ? (
+        <div className="device-row">
+          <div>
+            <strong>{hrm.name}</strong>
+            <div className="muted small">
+              {hrmConn === 'reconnecting' ? 'Reconnecting…' : hrmConn === 'lost' ? 'Connection lost' : heartRate != null ? `♥ ${heartRate} bpm` : 'Waiting for a reading…'}
+            </div>
+          </div>
+          <button className="btn ghost small" onClick={() => void disconnectHeartRate()}>
+            Disconnect
+          </button>
+        </div>
+      ) : (
+        <SlotConnect
+          label={last ? `Reconnect ${last.name}` : 'Connect HR monitor'}
+          onConnect={() => void connectHeartRate(last?.name)}
+          onOther={last ? () => void connectHeartRate() : undefined}
+          simLabel="Simulated"
+          onSim={() => void connectMockHeartRate()}
+          onForget={last ? () => forgetDevices('heartRate') : undefined}
+          disabled={!bt}
+          busy={busy}
+          hint={autoStatus.heartRate ?? (last ? undefined : 'Optional: a chest strap, arm band or watch that broadcasts heart rate.')}
+        />
+      )}
+    </section>
+  );
+}
+
 /** Virtual shifters: a Zwift Click/Ride/Play connected directly, or a simulated one. */
 function ShifterSlot() {
   const { controller, controllerConn, connectZwiftClick, connectMockController, disconnectController, remembered, autoStatus, forgetDevices } = useGame();
@@ -235,39 +297,31 @@ function ShifterSlot() {
   } else {
     body = (
       <>
-        <div className="row">
-          {lastName ? (
-            <>
-              <button className="btn primary" disabled={!bt || controllerConn === 'connecting'} onClick={() => void connectZwiftClick(lastName)} title="Opens the picker showing only your controller">
-                {controllerConn === 'connecting' ? 'Connecting…' : `Reconnect ${lastName}`}
+        <SlotConnect
+          label={lastName ? `Reconnect ${lastName}` : 'Connect Zwift Click'}
+          onConnect={() => void connectZwiftClick(lastName ?? undefined)}
+          onOther={lastName ? () => void connectZwiftClick() : undefined}
+          simLabel="Simulated"
+          onSim={() => void connectMockController()}
+          onForget={lastName ? () => forgetDevices('shifters') : undefined}
+          disabled={!bt}
+          busy={controllerConn === 'connecting'}
+          hint={
+            autoStatus.shifters ??
+            (controllerConn === 'lost'
+              ? 'Connection lost.'
+              : lastName
+                ? 'Press a button to wake it first.'
+                : 'Optional: shift and control workouts from the bars.')
+          }
+          extra={
+            !lastName && (
+              <button className="link small" onClick={() => setHelp((h) => !h)}>
+                {help ? 'Hide setup' : 'How to set up'}
               </button>
-              <button className="btn ghost small" disabled={!bt || controllerConn === 'connecting'} onClick={() => void connectZwiftClick()}>
-                Other…
-              </button>
-            </>
-          ) : (
-            <button className="btn primary" disabled={!bt || controllerConn === 'connecting'} onClick={() => void connectZwiftClick()}>
-              {controllerConn === 'connecting' ? 'Connecting…' : 'Connect Zwift Click'}
-            </button>
-          )}
-          <button className="btn ghost small" onClick={() => void connectMockController()}>
-            Simulated
-          </button>
-        </div>
-        <p className="muted small">
-          {autoStatus.shifters ? `${autoStatus.shifters} ` : controllerConn === 'lost' ? 'Connection lost. ' : lastName ? 'Wake it with a button press first. ' : 'Optional: shift and control workouts from the bars. '}
-          {lastName && !autoStatus.shifters && (
-            <>
-              <button className="link" onClick={() => forgetDevices('shifters')}>
-                Forget
-              </button>
-              {' · '}
-            </>
-          )}
-          <button className="link" onClick={() => setHelp((h) => !h)}>
-            {help ? 'Hide setup' : 'How to set up'}
-          </button>
-        </p>
+            )
+          }
+        />
         {help && (
           <div className="muted small controller-help">
             <ol>

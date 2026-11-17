@@ -16,11 +16,18 @@ export function buildTcx(track: Track, opts: { kj: number; notes?: string }): st
   const avgCadence = pedalling.length ? Math.round(pedalling.reduce((a, p) => a + p.cadence, 0) / pedalling.length) : 0;
   // On a bike, burned kcal ≈ mechanical kJ (≈24% efficiency cancels the 4.184 kJ/kcal).
   const calories = Math.round(opts.kj);
+  const withHr = pts.filter((p) => p.hr);
+  const avgHr = withHr.length ? Math.round(withHr.reduce((a, p) => a + p.hr!, 0) / withHr.length) : 0;
+  const maxHr = withHr.reduce((m, p) => Math.max(m, p.hr!), 0);
+  const hrLap = avgHr
+    ? `<AverageHeartRateBpm><Value>${avgHr}</Value></AverageHeartRateBpm>\n<MaximumHeartRateBpm><Value>${maxHr}</Value></MaximumHeartRateBpm>\n`
+    : '';
 
   const trackpoints = pts
     .map(
       (p) =>
         `<Trackpoint><Time>${iso(p.sec)}</Time><DistanceMeters>${p.distanceM.toFixed(1)}</DistanceMeters>` +
+        (p.hr ? `<HeartRateBpm><Value>${p.hr}</Value></HeartRateBpm>` : '') +
         `<Cadence>${Math.min(254, p.cadence)}</Cadence>` +
         `<Extensions><ns3:TPX><ns3:Speed>${(p.speedKph / 3.6).toFixed(2)}</ns3:Speed><ns3:Watts>${p.power}</ns3:Watts></ns3:TPX></Extensions></Trackpoint>`,
     )
@@ -36,7 +43,7 @@ export function buildTcx(track: Track, opts: { kj: number; notes?: string }): st
 <DistanceMeters>${distance.toFixed(1)}</DistanceMeters>
 <MaximumSpeed>${maxSpeed.toFixed(2)}</MaximumSpeed>
 <Calories>${calories}</Calories>
-<Intensity>Active</Intensity>
+${hrLap}<Intensity>Active</Intensity>
 <Cadence>${Math.min(254, avgCadence)}</Cadence>
 <TriggerMethod>Manual</TriggerMethod>
 <Track>

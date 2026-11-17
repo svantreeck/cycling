@@ -125,7 +125,6 @@ function TodayInner({ suggestion, load }: { suggestion: ReturnType<typeof sugges
           </button>
         </div>
       </div>
-      {!connected && <p className="muted small">Connect your trainer to start.</p>}
     </section>
   );
 }

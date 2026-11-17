@@ -3,12 +3,15 @@ import { BluetoothTrainer } from '../ble/ftms';
 import { MockTrainer } from '../ble/mockTrainer';
 import { MockController, type Controller, type ControllerAction } from '../ble/controller';
 import { ZwiftClickController } from '../ble/zwiftClick';
+import { HeartRateMonitor, MockHeartRate, type HeartRateSource, type HrState } from '../ble/heartRate';
 import {
   canAutoReconnect,
+  forgetHeartRate,
   forgetShifters,
   forgetTrainer,
   loadRemembered,
   permittedDevice,
+  rememberHeartRate,
   rememberShifter,
   rememberTrainer,
   waitUntilNearby,
@@ -63,6 +66,10 @@ export interface LiveRide {
   zoneSec: number[];
   /** Σ (power / FTP)² × seconds; TSS = stress / 36 */
   stress: number;
+  /** Σ bpm × seconds and the seconds it covers, for the average heart rate */
+  hrBeats: number;
+  hrSec: number;
+  maxHr: number;
   lastT: number | null;
   idleMs: number;
   paused: boolean;
@@ -114,7 +121,12 @@ interface GameState {
   /** the trainer and shifters connected last time, for one-tap or automatic reconnects */
   remembered: RememberedDevices;
   /** what an automatic reconnect is waiting for, per slot */
-  autoStatus: { trainer?: string; shifters?: string };
+  autoStatus: { trainer?: string; shifters?: string; heartRate?: string };
+  /** heart-rate monitor (a Bluetooth strap, or the simulated one) */
+  hrm: HeartRateSource | null;
+  hrmConn: 'disconnected' | HrState;
+  /** latest heart rate in bpm; null when none has arrived for a few seconds */
+  heartRate: number | null;
 
   setScreen(s: Screen): void;
   /** Connect a Bluetooth trainer. With `name`, the picker lists only that device (one-tap reconnect). */
@@ -142,7 +154,11 @@ interface GameState {
   connectZwiftClick(name?: string): Promise<void>;
   /** On page load: reconnect remembered devices without prompting, where the browser allows it. */
   autoConnect(): Promise<void>;
-  forgetDevices(kind: 'trainer' | 'shifters'): void;
+  forgetDevices(kind: 'trainer' | 'shifters' | 'heartRate'): void;
+  /** Connect a heart-rate monitor. With `name`, the picker lists only that device. */
+  connectHeartRate(name?: string): Promise<void>;
+  connectMockHeartRate(): Promise<void>;
+  disconnectHeartRate(): Promise<void>;
   disconnectController(): Promise<void>;
   /** Handle a controller button (or keyboard shortcut). */
   controllerAction(a: ControllerAction): void;
@@ -173,6 +189,9 @@ let unsubs: Unsubscribe[] = [];
 let lastSave = 0;
 /** Second-by-second track of the current ride (kept outside the store: it grows every second). */
 let track = new TrackRecorder();
+/** a reading older than this is treated as no heart rate (strap off, or out of range) */
+const HR_STALE_MS = 5000;
+let lastHrAt = 0;
 
 export const useGame = create<GameState>((set, get) => {
   const persist = (profile: Profile) => {
@@ -279,7 +298,11 @@ export const useGame = create<GameState>((set, get) => {
       const idleMs = idle ? ride.idleMs + dt : 0;
       const paused = idleMs >= IDLE_PAUSE_MS;
       ride = { ...ride, lastT: sample.t, idleMs, paused };
-      track.add(sample, dt, !paused && dt > 0);
+      const hr = state.heartRate;
+      track.add(sample, dt, !paused && dt > 0, hr);
+      if (!paused && dt > 0 && hr) {
+        ride = { ...ride, hrBeats: ride.hrBeats + hr * (dt / 1000), hrSec: ride.hrSec + dt / 1000, maxHr: Math.max(ride.maxHr, hr) };
+      }
       if (!paused && dt > 0) {
         const zone = zoneFor(sample.power, profile.ftp);
         const zoneSec = [...ride.zoneSec];
@@ -298,7 +321,7 @@ export const useGame = create<GameState>((set, get) => {
       }
     }
 
-    set({ sample, ride, profile });
+    set({ sample, ride, profile, ...(state.heartRate != null && Date.now() - lastHrAt > HR_STALE_MS ? { heartRate: null } : {}) });
 
     const run = get().run;
     if (run) {
@@ -341,6 +364,31 @@ export const useGame = create<GameState>((set, get) => {
     if (toastTimer) clearTimeout(toastTimer);
     set({ toast: { text, id: Date.now() } });
     toastTimer = setTimeout(() => set({ toast: null }), 1800);
+  };
+
+  let hrUnsubs: Unsubscribe[] = [];
+  const attachHeartRate = async (m: HeartRateSource, quiet = false) => {
+    hrUnsubs.forEach((u) => u());
+    hrUnsubs = [
+      m.onHeartRate((bpm) => {
+        lastHrAt = Date.now();
+        set({ heartRate: bpm });
+      }),
+      m.onState((s) => set({ hrmConn: s, ...(s === 'connected' ? {} : { heartRate: null }) })),
+    ];
+    set({ hrm: m, hrmConn: 'connecting', error: null });
+    try {
+      await m.connect();
+      set({ hrmConn: 'connected' });
+      if (m instanceof HeartRateMonitor && m.identity) {
+        rememberHeartRate(m.identity);
+        set({ remembered: loadRemembered() });
+      }
+    } catch (e) {
+      hrUnsubs.forEach((u) => u());
+      hrUnsubs = [];
+      set({ hrm: null, hrmConn: 'disconnected', error: quiet ? get().error : errorMessage(e) });
+    }
   };
 
   let controllerUnsubs: Unsubscribe[] = [];
@@ -391,6 +439,9 @@ export const useGame = create<GameState>((set, get) => {
     controllerRev: 0,
     remembered: loadRemembered(),
     autoStatus: {},
+    hrm: null,
+    hrmConn: 'disconnected',
+    heartRate: null,
 
     setScreen: (screen) => set({ screen }),
 
@@ -435,6 +486,9 @@ export const useGame = create<GameState>((set, get) => {
           maxPower: 0,
           zoneSec: [0, 0, 0, 0, 0, 0, 0],
           stress: 0,
+          hrBeats: 0,
+          hrSec: 0,
+          maxHr: 0,
           lastT: null,
           idleMs: 0,
           paused: false,
@@ -464,6 +518,7 @@ export const useGame = create<GameState>((set, get) => {
         challenges: ride.challenges,
         tss: Math.round(ride.stress / 36),
         distanceM: Math.round(track.distance),
+        ...(ride.hrSec >= 30 ? { avgHr: Math.round(ride.hrBeats / ride.hrSec), maxHr: ride.maxHr } : {}),
       };
       let next = profile;
       const statCelebrations: Celebration[] = [];
@@ -613,6 +668,16 @@ export const useGame = create<GameState>((set, get) => {
         if (near && !get().trainer) await attach(new BluetoothTrainer({ device: dev }), true);
       })();
 
+      const hrTask = (async () => {
+        if (!rem.heartRate || get().hrm) return;
+        const dev = await permittedDevice(rem.heartRate.id);
+        if (!dev) return;
+        status({ heartRate: `Looking for ${dev.name ?? rem.heartRate.name}… put it on to wake it.` });
+        const near = await waitUntilNearby(dev, 120_000);
+        status({ heartRate: undefined });
+        if (near && !get().hrm) await attachHeartRate(new HeartRateMonitor({ device: dev }), true);
+      })();
+
       // Pods connect one at a time: the first creates the controller, later ones join it.
       let chain = Promise.resolve();
       const podTasks = rem.shifters.map(async (r) => {
@@ -632,11 +697,22 @@ export const useGame = create<GameState>((set, get) => {
         });
         await chain;
       });
-      await Promise.all([trainerTask, Promise.all(podTasks).finally(() => status({ shifters: undefined }))]);
+      await Promise.all([trainerTask, hrTask, Promise.all(podTasks).finally(() => status({ shifters: undefined }))]);
+    },
+
+    connectHeartRate: (name) => attachHeartRate(new HeartRateMonitor(name ? { name } : {})),
+    connectMockHeartRate: () => attachHeartRate(new MockHeartRate(() => get().sample?.power ?? 0)),
+    disconnectHeartRate: async () => {
+      const m = get().hrm;
+      hrUnsubs.forEach((u) => u());
+      hrUnsubs = [];
+      await m?.disconnect().catch(() => undefined);
+      set({ hrm: null, hrmConn: 'disconnected', heartRate: null });
     },
 
     forgetDevices: (kind) => {
       if (kind === 'trainer') forgetTrainer();
+      else if (kind === 'heartRate') forgetHeartRate();
       else forgetShifters();
       set({ remembered: loadRemembered() });
     },
