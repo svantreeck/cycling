@@ -42,3 +42,14 @@ describe('challengeBoard', () => {
     expect(challengeBoard(7, [5], {}, undefined)[0].challenge.id).toBe('promo-10');
   });
 });
+
+describe('workout rewards', () => {
+  const z2 = challengeById('wk-z2-60')!;
+  it('pays full XP on every completion', () => {
+    expect(challengeReward({ challenge: z2, result: pass, previousCompletions: 0, isBounty: false, oldFtp: 200 }).xp).toBe(z2.xpReward);
+    expect(challengeReward({ challenge: z2, result: pass, previousCompletions: 9, isBounty: false, oldFtp: 200 }).xp).toBe(z2.xpReward);
+  });
+  it('pays nothing when ended early', () => {
+    expect(challengeReward({ challenge: z2, result: { ...pass, passed: false, aborted: true }, previousCompletions: 0, isBounty: false, oldFtp: 200 }).xp).toBe(0);
+  });
+});

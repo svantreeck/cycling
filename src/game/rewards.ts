@@ -21,7 +21,14 @@ export interface Reward {
 }
 
 export function challengeReward({ challenge, result, previousCompletions, isBounty, oldFtp }: RewardInput): Reward {
-  if (!result.passed) return { xp: 0, lines: ['No challenge XP this time, but your ride XP still counts.'] };
+  if (!result.passed) {
+    const what = challenge.workout ? 'workout bonus' : 'challenge XP';
+    return { xp: 0, lines: [`No ${what} this time, but your ride XP still counts.`] };
+  }
+  if (challenge.workout) {
+    // Training is meant to be repeated, so workouts pay full every time.
+    return { xp: challenge.xpReward, lines: [`Workout bonus: ${challenge.xpReward} XP (training load ${challenge.workout.tss} TSS)`] };
+  }
   const lines: string[] = [];
   let base = challenge.xpReward;
   if (previousCompletions > 0) {

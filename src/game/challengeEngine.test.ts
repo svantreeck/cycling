@@ -1,6 +1,6 @@
 import type { TrainerSample } from '../ble/trainer';
 import { ChallengeRun, type TrainerCommand } from './challengeEngine';
-import { RAMP_TEST, challengeById, type Challenge } from './challenges';
+import { RAMP_TEST, WORKOUTS, challengeById, dailyBounty, trainingStress, type Challenge } from './challenges';
 
 const FTP = 200;
 
@@ -165,5 +165,71 @@ describe('promotion challenges', () => {
     const work = (c: Challenge) => c.steps.filter((s) => s.kind === 'work');
     expect(work(p20).length).toBeGreaterThan(work(p5).length);
     expect(work(p20)[0].targetPctFtp!).toBeGreaterThan(work(p5)[0].targetPctFtp!);
+  });
+});
+
+describe('workouts', () => {
+  const wk: Challenge = { ...simple, id: 'wk', workout: { category: 'endurance', focus: 'Zone 2', tss: 10 } };
+
+  it('never cracks: stopping pedalling pauses the clock, and the workout resumes after', () => {
+    const run = new ChallengeRun(wk, FTP);
+    // stop for 60 s in the middle of the first work step
+    ride(run, (sec, r) => ({ ...obedient(sec, r), cadence: sec >= 12 && sec < 72 ? 0 : 90 }));
+    const s = run.snapshot();
+    expect(s.result?.passed).toBe(true);
+    expect(s.totalElapsedSec).toBeCloseTo(50, 0);
+  });
+
+  it('reports paused in the snapshot and does not advance', () => {
+    const run = new ChallengeRun(wk, FTP);
+    run.start();
+    run.update({ t: 0, power: 100, cadence: 90, speedKph: 30 });
+    run.update({ t: 3000, power: 100, cadence: 90, speedKph: 30 });
+    run.update({ t: 6000, power: 0, cadence: 0, speedKph: 0 });
+    expect(run.snapshot()).toMatchObject({ paused: true, stepElapsedSec: 3 });
+    run.update({ t: 7000, power: 100, cadence: 85, speedKph: 30 });
+    expect(run.snapshot()).toMatchObject({ paused: false, stepElapsedSec: 4 });
+  });
+
+  it('ending early is an abort, not a failure', () => {
+    const run = new ChallengeRun(wk, FTP);
+    ride(run, obedient, 15);
+    run.abort();
+    expect(run.snapshot().result).toMatchObject({ passed: false, aborted: true, reason: 'Workout ended early.' });
+  });
+
+  it('progress is time-based', () => {
+    const run = new ChallengeRun(wk, FTP);
+    ride(run, obedient, 25);
+    expect(run.snapshot().ruleProgress).toBeCloseTo(0.5, 1);
+  });
+
+  it('catalog: unique ids, ERG throughout, warm-up first, cool-down last, sensible TSS', () => {
+    const ids = new Set(WORKOUTS.map((w) => w.id));
+    expect(ids.size).toBe(WORKOUTS.length);
+    for (const w of WORKOUTS) {
+      expect(challengeById(w.id)).toBe(w);
+      expect(w.steps.every((s) => s.mode === 'erg' && s.targetPctFtp != null)).toBe(true);
+      expect(w.steps[0].kind).toBe('warmup');
+      expect(w.steps[w.steps.length - 1].kind).toBe('cooldown');
+      expect(w.workout!.tss).toBe(trainingStress(w.steps));
+      expect(w.workout!.tss).toBeGreaterThan(5);
+      expect(w.workout!.tss).toBeLessThan(150);
+    }
+    // Zone 2 rides stay in Zone 2 (56–75%) for their main work.
+    for (const w of WORKOUTS.filter((w) => w.workout!.focus === 'Zone 2')) {
+      for (const s of w.steps.filter((s) => s.kind === 'work')) {
+        expect(s.targetPctFtp).toBeGreaterThanOrEqual(56);
+        expect(s.targetPctFtp).toBeLessThan(76);
+      }
+    }
+  });
+
+  it('trainingStress: one hour at FTP is 100', () => {
+    expect(trainingStress([{ label: '', kind: 'work', durationSec: 3600, mode: 'erg', targetPctFtp: 100 }])).toBe(100);
+  });
+
+  it('workouts are not in the daily bounty pool', () => {
+    for (let d = 1; d <= 60; d++) expect(dailyBounty(30, new Date(2026, 0, d))?.workout).toBeUndefined();
   });
 });

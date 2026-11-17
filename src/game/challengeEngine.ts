@@ -1,5 +1,5 @@
 import type { TrainerSample } from '../ble/trainer';
-import type { Challenge, Step } from './challenges';
+import { fmtDur, type Challenge, type Step } from './challenges';
 
 export type TrainerCommand = { type: 'erg'; watts: number } | { type: 'free' };
 
@@ -31,6 +31,8 @@ export interface RunSnapshot {
   ruleLabel: string;
   /** seconds cadence has been below the crack threshold */
   crackSec: number;
+  /** workouts only: the clock is stopped because the rider stopped pedalling */
+  paused: boolean;
   result: RunResult | null;
 }
 
@@ -38,6 +40,8 @@ export interface RunSnapshot {
 export const CRACK_CADENCE = 60;
 export const RAMP_CRACK_CADENCE = 50;
 export const CRACK_SEC = 5;
+/** Workouts pause their clock below this cadence (rider stopped for a drink, etc.). */
+export const PAUSE_CADENCE = 20;
 /** Ignore gaps longer than this (e.g. Bluetooth hiccup) when integrating time. */
 const MAX_DT_MS = 5000;
 
@@ -68,6 +72,7 @@ export class ChallengeRun {
   private cadenceGraceMs = 0;
   private rampStepsCompleted = 0;
   private needCommand = true;
+  private paused = false;
 
   constructor(challenge: Challenge, ftp: number) {
     this.challenge = challenge;
@@ -118,6 +123,10 @@ export class ChallengeRun {
     this.lastT = sample.t;
     if (dt === 0) return cmds;
 
+    // Workouts can't be failed: stopping pedalling just stops the clock.
+    this.paused = !!this.challenge.workout && sample.cadence < PAUSE_CADENCE;
+    if (this.paused) return cmds;
+
     const step = this.currentStep;
     this.stepElapsedMs += dt;
     this.totalElapsedMs += dt;
@@ -159,7 +168,8 @@ export class ChallengeRun {
       this.needCommand = false;
       return [this.currentCommand()];
     } else {
-      this.result = { passed: false, aborted: true, reason: 'Challenge abandoned.', bestAvgPower: this.bestAvgOrUndef() };
+      const reason = this.challenge.workout ? 'Workout ended early.' : 'Challenge abandoned.';
+      this.result = { passed: false, aborted: true, reason, bestAvgPower: this.bestAvgOrUndef() };
       this.status = 'done';
     }
     return [{ type: 'free' }];
@@ -181,6 +191,7 @@ export class ChallengeRun {
       ruleProgress: progress,
       ruleLabel: label,
       crackSec: this.lowCadenceMs / 1000,
+      paused: this.paused,
       result: this.result,
     };
   }
@@ -198,8 +209,8 @@ export class ChallengeRun {
   private evaluate(step: Step, sample: TrainerSample, dt: number) {
     const rule = this.challenge.success;
 
-    // Crack detection on ERG work steps.
-    if (step.mode === 'erg' && step.kind === 'work') {
+    // Crack detection on ERG work steps (challenges only; workouts pause instead).
+    if (step.mode === 'erg' && step.kind === 'work' && !this.challenge.workout) {
       const threshold = rule.kind === 'ramp' ? RAMP_CRACK_CADENCE : CRACK_CADENCE;
       this.lowCadenceMs = sample.cadence < threshold ? this.lowCadenceMs + dt : 0;
       if (this.lowCadenceMs >= CRACK_SEC * 1000) {
@@ -253,7 +264,7 @@ export class ChallengeRun {
 
     // That was the last scored step.
     if (rule.kind === 'completeAll') {
-      this.pass('All intervals completed.');
+      this.pass(this.challenge.workout ? 'Workout complete. Nice training!' : 'All intervals completed.');
     } else if (rule.kind === 'ramp') {
       this.endRamp('You finished every ramp step.', false);
     } else if (step.kind === 'effort' || step.kind === 'work' || step.kind === 'rest') {
@@ -329,6 +340,12 @@ export class ChallengeRun {
   private ruleProgress(): { progress: number; label: string } {
     const rule = this.challenge.success;
     const steps = this.challenge.steps;
+    if (this.challenge.workout) {
+      const total = steps.reduce((a, s) => a + s.durationSec, 0);
+      const done = Math.min(total, steps.slice(0, this.stepIndex).reduce((a, s) => a + s.durationSec, 0) + this.stepElapsedMs / 1000);
+      const p = this.status === 'done' && this.result?.passed ? 1 : done / Math.max(1, total);
+      return { progress: p, label: `${Math.floor(p * 100)}% done · ${fmtDur(total - done)} left` };
+    }
     switch (rule.kind) {
       case 'completeAll': {
         const work = steps.filter((s) => s.kind === 'work');

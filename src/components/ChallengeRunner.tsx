@@ -1,17 +1,7 @@
 import { CRACK_SEC } from '../game/challengeEngine';
-import { challengeById, fmtDur, type Step } from '../game/challenges';
+import { challengeById, fmtDur } from '../game/challenges';
 import { useGame } from '../store/gameStore';
-
-const stepColor = (s: Step) => {
-  if (s.kind === 'effort') return '#9b59b6';
-  const p = s.targetPctFtp ?? 50;
-  if (p >= 121) return '#e74c3c';
-  if (p >= 106) return '#e67e22';
-  if (p >= 91) return '#f1c40f';
-  if (p >= 76) return '#2ecc71';
-  if (p >= 56) return '#3498db';
-  return '#7f8c8d';
-};
+import { stepColor, WorkoutProfile } from './WorkoutProfile';
 
 export function ChallengeRunner() {
   const { runSnap: snap, run, abortChallenge, sample, outcome, dismissOutcome } = useGame();
@@ -23,6 +13,7 @@ export function ChallengeRunner() {
 
   const { step } = snap;
   const isRamp = challenge.success.kind === 'ramp';
+  const isWorkout = !!challenge.workout;
   const total = challenge.steps.reduce((a, s) => a + s.durationSec, 0);
   const elapsedBefore = challenge.steps.slice(0, snap.stepIndex).reduce((a, s) => a + s.durationSec, 0);
   const cursorPct = ((elapsedBefore + snap.stepElapsedSec) / total) * 100;
@@ -70,6 +61,8 @@ export function ChallengeRunner() {
         {snap.result && <div className={`verdict ${snap.result.passed ? 'pass' : 'fail'}`}>{snap.result.passed ? '✓ ' : '✗ '}{snap.result.reason}</div>}
       </div>
 
+      {snap.paused && <div className="paused-banner">⏸ Paused. Start pedalling to resume.</div>}
+
       {snap.crackSec > 0 && snap.status === 'running' && (
         <div className="crack-warn">Keep pedalling! Cracking in {Math.max(0, CRACK_SEC - snap.crackSec).toFixed(0)}s</div>
       )}
@@ -81,21 +74,12 @@ export function ChallengeRunner() {
         </div>
       </div>
 
-      <div className="timeline" title="Workout profile">
-        {challenge.steps.map((s, i) => (
-          <div
-            key={i}
-            className={`tl-step ${i === snap.stepIndex ? 'current' : ''}`}
-            style={{ flex: s.durationSec, height: `${Math.min(100, (s.kind === 'effort' ? 150 : s.targetPctFtp ?? 50) / 1.6)}%`, background: stepColor(s) }}
-          />
-        ))}
-        <div className="tl-cursor" style={{ left: `${cursorPct}%` }} />
-      </div>
+      <WorkoutProfile steps={challenge.steps} currentIndex={snap.stepIndex} cursorPct={cursorPct} />
 
       <div className="runner-foot">
         <span className="muted small">{next ? `Next: ${next.label} · ${fmtDur(next.durationSec)}` : 'Last step'}</span>
         <button className={`btn ${snap.status === 'cooldown' ? 'primary' : isRamp ? 'primary' : 'danger'}`} onClick={abortChallenge}>
-          {snap.status === 'cooldown' ? 'Finish' : isRamp ? "I'm done" : 'Abort'}
+          {snap.status === 'cooldown' ? 'Finish' : isRamp ? "I'm done" : isWorkout ? 'End workout' : 'Abort'}
         </button>
       </div>
     </div>
@@ -105,10 +89,11 @@ export function ChallengeRunner() {
 function OutcomeCard({ onClose }: { onClose: () => void }) {
   const o = useGame((s) => s.outcome)!;
   const ftp = useGame((s) => s.profile.ftp);
+  const noun = o.challenge.workout ? 'Workout' : 'Challenge';
   return (
     <div className={`card outcome ${o.result.passed ? 'pass' : 'fail'}`}>
       <div className="outcome-icon">{o.result.passed ? '🏆' : '💥'}</div>
-      <h2>{o.result.passed ? 'Challenge complete!' : o.result.aborted ? 'Challenge abandoned' : 'Challenge failed'}</h2>
+      <h2>{o.result.passed ? `${noun} complete!` : o.result.aborted ? (o.challenge.workout ? 'Workout ended early' : 'Challenge abandoned') : `${noun} failed`}</h2>
       <div className="outcome-name">{o.challenge.name}</div>
       <p>{o.result.reason}</p>
       {o.result.newFtp != null && o.result.passed && (
