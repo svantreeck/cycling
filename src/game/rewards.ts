@@ -42,7 +42,7 @@ export function challengeReward({ challenge, result, previousCompletions, isBoun
   if (isBounty) {
     const bonus = Math.round(base * (BOUNTY_FACTOR - 1));
     base += bonus;
-    lines.push(`Daily bounty ×${BOUNTY_FACTOR}: +${bonus} XP`);
+    lines.push(`Today's ride bonus ×${BOUNTY_FACTOR}: +${bonus} XP`);
   }
   let xp = base;
   if (result.newFtp != null && result.newFtp > oldFtp) {

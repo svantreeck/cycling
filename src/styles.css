@@ -345,3 +345,25 @@ input[type='range'] { padding: 0; }
 .slot-dot { margin-left: auto; display: inline-flex; }
 .slot-dot .dot { width: 9px; height: 9px; border-radius: 50%; }
 .slot-dot.conn-disconnected .dot { background: var(--muted); }
+
+/* Home: two columns on wide screens so it fits an iPad in landscape without scrolling */
+.home-grid { display: grid; gap: 12px; margin-top: 12px; }
+.home-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.home-col > .card { margin: 0; }
+@media (min-width: 900px) { .home-grid { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); align-items: start; } }
+.home .hero { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'avatar id' 'xp xp' 'sys sys'; gap: 10px 16px; align-items: center; }
+.hero-avatar { grid-area: avatar; }
+.hero-id { grid-area: id; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.hero-xp { grid-area: xp; min-width: 0; }
+.hero-sys { grid-area: sys; min-width: 0; }
+/* Portrait tablets: one column, so put the XP and stat bars beside the avatar to save height. */
+@media (min-width: 600px) and (max-width: 899px) {
+  .home .hero { grid-template-areas: 'avatar id' 'avatar xp' 'avatar sys'; align-items: start; }
+}
+.hero .hero-stats { flex-wrap: wrap; gap: 12px; margin: 4px 0 0; }
+.today-start { display: flex; gap: 10px; flex-wrap: wrap; }
+.today-start .btn.primary { flex: 1; }
+.pill.bonus { background: rgba(255, 213, 79, 0.15); color: var(--gold); border: 1px solid rgba(255, 213, 79, 0.5); }
+.pill.done { background: rgba(46, 204, 113, 0.15); color: #2ecc71; }
+.devices .device-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.week.empty .btn { white-space: nowrap; }

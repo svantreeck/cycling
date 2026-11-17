@@ -61,6 +61,8 @@ interface Pt {
  * Contains no React or Bluetooth code: feed it samples, and it returns trainer commands.
  */
 export class ChallengeRun {
+  /** set by the store: the workout id earning today's bonus when this run started */
+  bonusId: string | undefined;
   readonly challenge: Challenge;
   readonly ftp: number;
 

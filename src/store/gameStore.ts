@@ -6,7 +6,7 @@ import { ZwiftClickController } from '../ble/zwiftClick';
 import type { Trainer, TrainerSample, Unsubscribe } from '../ble/trainer';
 import { tiersReached, type AvatarTier } from '../game/avatarTiers';
 import { ChallengeRun, type RunResult, type RunSnapshot, type TrainerCommand } from '../game/challengeEngine';
-import { challengeById, dailyBounty, RAMP_TEST, roman, type Challenge, type FitnessSystem } from '../game/challenges';
+import { challengeById, RAMP_TEST, roman, type Challenge, type FitnessSystem } from '../game/challenges';
 import { blockInfo, isPromoted, suggestToday, type Feel } from '../game/coach';
 import { clampGear, DEFAULT_GEAR, gradeForGear } from '../game/gears';
 import { challengeReward, promotionXp } from '../game/rewards';
@@ -133,11 +133,22 @@ interface GameState {
 export const localDate = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-/** The day's bounty, or undefined if already claimed today. */
-export function activeBounty(profile: Profile): Challenge | undefined {
-  if (profile.bountyClaimedOn === localDate()) return undefined;
-  return dailyBounty(profile.levels.level);
+/**
+ * The workout that earns today's ×1.5 XP bonus: the coach's suggestion, or the swap the rider picked on the Today card.
+ * Undefined once claimed today, and on rest days (the bonus shouldn't tempt anyone into riding then).
+ */
+export function todayBonusId(
+  profile: Profile,
+  todayPick: { suggestionId: string; workoutId: string } | null,
+  now = Date.now(),
+): string | undefined {
+  if (profile.bountyClaimedOn === localDate(new Date(now))) return undefined;
+  const s = suggestToday(profile, now);
+  if (s.kind === 'rest') return undefined;
+  return todayPick?.suggestionId === s.workout.id ? todayPick.workoutId : s.workout.id;
 }
+
+export const todayBonusClaimed = (profile: Profile, now = Date.now()) => profile.bountyClaimedOn === localDate(new Date(now));
 
 let unsubs: Unsubscribe[] = [];
 let lastSave = 0;
@@ -185,8 +196,8 @@ export const useGame = create<GameState>((set, get) => {
     const { profile, ride } = get();
     const challenge = run.challenge;
     const record = profile.completed[challenge.id] ?? { count: 0, attempts: 0 };
-    const bounty = activeBounty(profile);
-    const isBounty = bounty?.id === challenge.id;
+    // The bonus is decided by the suggestion as it stood when the workout started (rides are only added at ride end).
+    const isBounty = run.bonusId === challenge.id;
     const reward = challengeReward({
       challenge,
       result,
@@ -455,6 +466,7 @@ export const useGame = create<GameState>((set, get) => {
       // The challenge takes over the trainer; free-ride ERG stays off afterwards.
       ergOff();
       const newRun = new ChallengeRun(c, profile.ftp);
+      newRun.bonusId = todayBonusId(profile, get().todayPick);
       sendCommands(newRun.start());
       set({ run: newRun, runSnap: newRun.snapshot(), outcome: null, screen: 'ride' });
     },

@@ -1,6 +1,6 @@
 import type { TrainerSample } from '../ble/trainer';
 import { ChallengeRun, type TrainerCommand } from './challengeEngine';
-import { RAMP_TEST, WORKOUTS, challengeById, dailyBounty, mainSetStress, totalDurationSec, trainingStress, type Challenge } from './challenges';
+import { RAMP_TEST, WORKOUTS, challengeById, mainSetStress, totalDurationSec, trainingStress, type Challenge } from './challenges';
 
 const FTP = 200;
 
@@ -260,9 +260,6 @@ describe('workouts', () => {
     expect(trainingStress([{ label: '', kind: 'work', durationSec: 3600, mode: 'erg', targetPctFtp: 100 }])).toBe(100);
   });
 
-  it('workouts are not in the daily bounty pool', () => {
-    for (let d = 1; d <= 60; d++) expect(dailyBounty(30, new Date(2026, 0, d))?.workout).toBeUndefined();
-  });
 });
 
 describe('rider controls', () => {

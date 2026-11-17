@@ -94,11 +94,11 @@ function TrainerSlot() {
             <button className="btn primary" disabled={!bt || conn === 'connecting'} onClick={() => void connectBluetooth()}>
               {conn === 'connecting' ? 'Connecting…' : 'Connect trainer'}
             </button>
-            <button className="btn ghost" disabled={conn === 'connecting'} onClick={() => void connectMock()}>
+            <button className="btn ghost small" disabled={conn === 'connecting'} onClick={() => void connectMock()}>
               Simulator
             </button>
           </div>
-          <p className="muted small">Close Zwift, the Wahoo app and any other app using the trainer. Only one app can control it at a time.</p>
+          <p className="muted small">Close Zwift, the Wahoo app or anything else using the trainer first.</p>
         </>
       )}
     </section>
@@ -179,7 +179,7 @@ function ShifterSlot() {
       <div className="device-row">
         <div>
           <strong>{controller.name}</strong>
-          <div className="muted small">Use the on-screen controller pad, or the − / + keys.</div>
+          <div className="muted small">On-screen pad, or the − / + keys.</div>
         </div>
         <button className="btn ghost small" onClick={() => void disconnectController()}>
           Disconnect
@@ -193,12 +193,12 @@ function ShifterSlot() {
           <button className="btn primary" disabled={!bt || controllerConn === 'connecting'} onClick={() => void connectZwiftClick()}>
             {controllerConn === 'connecting' ? 'Connecting…' : 'Connect Zwift Click'}
           </button>
-          <button className="btn ghost" onClick={() => void connectMockController()}>
+          <button className="btn ghost small" onClick={() => void connectMockController()}>
             Simulated
           </button>
         </div>
         <p className="muted small">
-          {controllerConn === 'lost' ? 'Connection lost. ' : 'Optional: shift gears and control workouts from your handlebars. '}
+          {controllerConn === 'lost' ? 'Connection lost. ' : 'Optional: shift and control workouts from the bars. '}
           <button className="link" onClick={() => setHelp((h) => !h)}>
             {help ? 'Hide setup' : 'How to set up'}
           </button>

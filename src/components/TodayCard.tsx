@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { challengeById, fmtDur, totalDurationSec, trainingStress, type Challenge } from '../game/challenges';
 import { suggestToday, swapsFor, trainingLoad, type SuggestionKind } from '../game/coach';
-import { useGame } from '../store/gameStore';
+import { BOUNTY_FACTOR } from '../game/rewards';
+import { todayBonusClaimed, todayBonusId, useGame } from '../store/gameStore';
 import { WorkoutProfile } from './WorkoutProfile';
 
 const KIND_LABEL: Record<SuggestionKind, string> = {
@@ -29,7 +30,7 @@ export function TodayCard() {
 }
 
 function TodayInner({ suggestion, load }: { suggestion: ReturnType<typeof suggestToday>; load: ReturnType<typeof trainingLoad> }) {
-  const { conn, run, startChallenge, setScreen, todayPick, setTodayPick } = useGame();
+  const { conn, run, ride, startChallenge, startRide, setScreen, todayPick, setTodayPick, profile } = useGame();
   const chosenId = todayPick?.suggestionId === suggestion.workout.id ? todayPick.workoutId : null;
   const setChosenId = (id: string | null) => setTodayPick(id ? { suggestionId: suggestion.workout.id, workoutId: id } : null);
   const workout: Challenge = (chosenId && challengeById(chosenId)) || suggestion.workout;
@@ -37,6 +38,9 @@ function TodayInner({ suggestion, load }: { suggestion: ReturnType<typeof sugges
   const swaps = swapsFor(workout);
   const connected = conn === 'connected';
   const tss = workout.workout?.tss ?? trainingStress(workout.steps);
+  const bonus = todayBonusId(profile, todayPick) === workout.id;
+  const claimed = todayBonusClaimed(profile);
+  const xp = bonus ? Math.round(workout.xpReward * BOUNTY_FACTOR) : workout.xpReward;
 
   const swapBtn = (label: string, target: Challenge | null) => (
     <button className="chip small" disabled={!target} title={target ? `${target.name} · ${fmtDur(totalDurationSec(target))}` : undefined} onClick={() => target && setChosenId(target.id)}>
@@ -49,6 +53,12 @@ function TodayInner({ suggestion, load }: { suggestion: ReturnType<typeof sugges
       <div className="today-head">
         <h2>Today's ride</h2>
         <span className="pill gold">{KIND_LABEL[suggestion.kind]}</span>
+        {bonus && (
+          <span className="pill bonus" title="Ride today's suggestion (or a swap of it) for bonus XP, once a day">
+            ★ ×{BOUNTY_FACTOR} XP today
+          </span>
+        )}
+        {claimed && <span className="pill done">✓ Bonus earned</span>}
       </div>
 
       <div className="load-strip" title="Training load from your recent rides">
@@ -85,14 +95,27 @@ function TodayInner({ suggestion, load }: { suggestion: ReturnType<typeof sugges
         <div className="ch-meta">
           <span>⏱ {fmtDur(totalDurationSec(workout))}</span>
           <span>{tss} TSS</span>
-          <span className="xp">+{workout.xpReward} XP</span>
+          <span className="xp">+{xp} XP</span>
         </div>
       </div>
 
       <div className="today-actions">
-        <button className="btn primary big" disabled={!connected || !!run} onClick={() => startChallenge(workout.id)}>
-          {run ? 'Ride in progress' : `Start ${workout.name}`}
-        </button>
+        <div className="today-start">
+          <button className="btn primary big" disabled={!connected || !!run} onClick={() => startChallenge(workout.id)}>
+            {run ? 'Ride in progress' : `Start ${workout.name}`}
+          </button>
+          <button
+            className="btn big"
+            disabled={!connected}
+            title="Ride without a workout, shifting virtual gears"
+            onClick={() => {
+              if (!ride) startRide();
+              setScreen('ride');
+            }}
+          >
+            🚴 {ride ? 'Back to ride' : 'Free ride'}
+          </button>
+        </div>
         <div className="swap-row">
           {swapBtn('Shorter', swaps.shorter)}
           {swapBtn('Easier', swaps.easier)}
@@ -102,7 +125,7 @@ function TodayInner({ suggestion, load }: { suggestion: ReturnType<typeof sugges
           </button>
         </div>
       </div>
-      {!connected && <p className="muted small">Connect your trainer above to start.</p>}
+      {!connected && <p className="muted small">Connect your trainer to start.</p>}
     </section>
   );
 }

@@ -486,17 +486,6 @@ export function challengeById(id: string): Challenge | undefined {
   return CHALLENGES.find((c) => c.id === id) ?? WORKOUTS.find((c) => c.id === id);
 }
 
-/** Pick today's bounty from the challenges unlocked at `level` (deterministic per date). */
-export function dailyBounty(level: number, date = new Date()): Challenge | undefined {
-  const pool = CHALLENGES.filter((c) => c.minLevel <= level && c.id !== RAMP_TEST.id);
-  if (!pool.length) return undefined;
-  const key = date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate();
-  let h = key;
-  h = ((h >>> 16) ^ h) * 0x45d9f3b;
-  h = ((h >>> 16) ^ h) >>> 0;
-  return pool[h % pool.length];
-}
-
 export const totalDurationSec = (c: Challenge) => c.steps.reduce((a, s) => a + s.durationSec, 0);
 
 export function fmtDur(sec: number): string {
