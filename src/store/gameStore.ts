@@ -22,13 +22,14 @@ import { tiersReached, type AvatarTier } from '../game/avatarTiers';
 import { ChallengeRun, type RunResult, type RunSnapshot, type TrainerCommand } from '../game/challengeEngine';
 import { challengeById, RAMP_TEST, roman, type Challenge, type FitnessSystem } from '../game/challenges';
 import { blockInfo, isPromoted, suggestToday, type Feel } from '../game/coach';
+import { ftpAt, rideMetrics } from '../game/rideMetrics';
 import { clampGear, DEFAULT_GEAR, gradeForGear, virtualSpeedKph } from '../game/gears';
 import { challengeReward, promotionXp } from '../game/rewards';
 import { addStats, statGains, statLevel, SYSTEMS } from '../game/stats';
 import { addXp, rideXp, type AddXpResult } from '../game/xp';
 import { zoneFor } from '../game/zones';
 import { keepScreenAwake } from '../wakeLock';
-import { saveTrack, TrackRecorder } from '../strava/track';
+import { loadTrack, saveTrack, TrackRecorder } from '../strava/track';
 import {
   defaultProfile,
   exportProfile,
@@ -143,6 +144,12 @@ interface GameState {
   dismissOutcome(): void;
   /** Post-workout check-in: record how the last workout felt (the coach uses it to pick the next rung). */
   rateWorkout(feel: Feel): void;
+  /** Post-ride check-in for the ride as a whole (free rides too); the coach looks for trends across rides. */
+  rateRide(feel: Feel): void;
+  /** Accept the coach's suggestion to raise FTP without a retest. */
+  raiseFtp(ftp: number): void;
+  /** "Not now" to the coach's FTP suggestion. */
+  dismissFtpNudge(): void;
   dismissCelebration(): void;
   /** Turn free-ride ERG on/off or change its target. Ignored while a challenge controls the trainer. */
   setFreeErg(patch: Partial<FreeErg>): void;
@@ -186,6 +193,24 @@ export function todayBonusId(
 }
 
 export const todayBonusClaimed = (profile: Profile, now = Date.now()) => profile.bonusClaimedOn === localDate(new Date(now));
+
+/** Work out trend metrics for saved rides that predate them but still have a stored track (the last few rides). */
+export function backfillMetrics(profile: Profile, storage: Storage | undefined = globalThis.localStorage): Profile {
+  let changed = false;
+  const rides = profile.rides.map((r) => {
+    if (r.metrics) return r;
+    const t = loadTrack(r.id, storage);
+    if (!t) return r;
+    const m = rideMetrics(t.points, ftpAt(profile.ftpHistory, r.startedAt, profile.ftp));
+    if (!m.cadence && !m.aerobic) return r;
+    changed = true;
+    return { ...r, metrics: m };
+  });
+  if (!changed) return profile;
+  const next = { ...profile, rides };
+  saveProfile(next, storage);
+  return next;
+}
 
 let unsubs: Unsubscribe[] = [];
 let lastSave = 0;
@@ -445,7 +470,7 @@ export const useGame = create<GameState>((set, get) => {
     }
   };
 
-  const initialProfile = loadProfile();
+  const initialProfile = backfillMetrics(loadProfile());
 
   return {
     profile: initialProfile,
@@ -551,6 +576,8 @@ export const useGame = create<GameState>((set, get) => {
         distanceM: Math.round(track.distance),
         ...(ride.hrSec >= 30 ? { avgHr: Math.round(ride.hrBeats / ride.hrSec), maxHr: ride.maxHr } : {}),
       };
+      const metrics = rideMetrics(track.points, profile.ftp);
+      if (metrics.cadence || metrics.aerobic) summary.metrics = metrics;
       let next = profile;
       const statCelebrations: Celebration[] = [];
       if (ride.elapsedSec >= 60) {
@@ -623,6 +650,29 @@ export const useGame = create<GameState>((set, get) => {
         lastRide: lastRide ? { ...lastRide, challenges: tag(lastRide.challenges) } : lastRide,
       });
     },
+    rateRide: (feel) => {
+      const { profile, lastRide } = get();
+      if (!lastRide) return;
+      // Also tag a finished workout that wasn't rated, so its ladder steps up (or repeats) to match.
+      const tag = (r: RideSummary): RideSummary => {
+        const i = r.challenges.map((c) => c.passed && !c.feel && !!challengeById(c.id)?.workout).lastIndexOf(true);
+        return { ...r, feel, challenges: i < 0 ? r.challenges : r.challenges.map((c, j) => (j === i ? { ...c, feel } : c)) };
+      };
+      const rides = profile.rides.map((r) => (r.id === lastRide.id ? tag(r) : r));
+      const next = { ...profile, rides };
+      persist(next);
+      set({ profile: next, lastRide: tag(lastRide) });
+    },
+
+    raiseFtp: (ftp) => get().updateProfile({ ftp }),
+
+    dismissFtpNudge: () => {
+      const { profile } = get();
+      const next = { ...profile, coach: { ...profile.coach, ftpNudgeDismissedAt: Date.now() } };
+      persist(next);
+      set({ profile: next });
+    },
+
     dismissCelebration: () => set((s) => ({ celebrations: s.celebrations.slice(1) })),
 
     setFreeErg: (patch) => {

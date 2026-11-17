@@ -1,4 +1,5 @@
-import type { Feel, Promotion, TrainingPlan } from '../game/coach';
+import type { CoachState, Feel, Promotion, TrainingPlan } from '../game/coach';
+import type { RideMetrics } from '../game/rideMetrics';
 import { emptyStats, type Stats } from '../game/stats';
 import { initialLevelState, type LevelState } from '../game/xp';
 
@@ -26,6 +27,10 @@ export interface RideSummary {
   /** heart rate (bpm), when a monitor was connected */
   avgHr?: number;
   maxHr?: number;
+  /** post-ride check-in for the ride as a whole */
+  feel?: Feel;
+  /** cadence and heart-rate numbers the coach compares across rides; missing on older rides */
+  metrics?: RideMetrics;
 }
 
 export interface ChallengeRecord {
@@ -54,6 +59,8 @@ export interface Profile {
   stats: Stats;
   /** training blocks completed with a passed FTP retest; the count is the rider's rank */
   promotions: Promotion[];
+  /** the rider's answers to coach suggestions */
+  coach?: CoachState;
 }
 
 export const defaultProfile = (): Profile => ({

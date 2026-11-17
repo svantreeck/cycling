@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
 import { challengeById, fmtDur, totalDurationSec, trainingStress, type Challenge } from '../game/challenges';
-import { suggestToday, swapsFor, trainingLoad, type SuggestionKind } from '../game/coach';
+import { coachNotes, suggestToday, swapsFor, trainingLoad, type SuggestionKind } from '../game/coach';
 import { BONUS_FACTOR } from '../game/rewards';
 import { todayBonusClaimed, todayBonusId, useGame } from '../store/gameStore';
+import { FtpNudge } from './CoachNotes';
 import { WorkoutProfile } from './WorkoutProfile';
 
 const KIND_LABEL: Record<SuggestionKind, string> = {
@@ -22,14 +23,16 @@ const FORM_HINT: Record<string, string> = {
 
 export function TodayCard() {
   const { profile } = useGame();
-  const { rides, ftpHistory, completed, ftp, plan } = profile;
-  const suggestion = useMemo(() => suggestToday({ ftp, ftpHistory, completed, rides, plan }), [ftp, ftpHistory, completed, rides, plan]);
+  const { rides, ftpHistory, completed, ftp, plan, coach } = profile;
+  const suggestion = useMemo(() => suggestToday({ ftp, ftpHistory, completed, rides, plan, coach }), [ftp, ftpHistory, completed, rides, plan, coach]);
   const load = useMemo(() => trainingLoad(rides), [rides]);
+  // A trend the suggestion didn't already act on, shown as a one-line note.
+  const note = useMemo(() => (suggestion.insight ? undefined : coachNotes({ ftp, ftpHistory, completed, rides, coach })[0]), [suggestion, ftp, ftpHistory, completed, rides, coach]);
   // Re-mount (resetting any swaps) when the suggestion itself changes, e.g. after a ride.
-  return <TodayInner key={suggestion.workout.id + suggestion.kind} suggestion={suggestion} load={load} />;
+  return <TodayInner key={suggestion.workout.id + suggestion.kind} suggestion={suggestion} load={load} note={note} />;
 }
 
-function TodayInner({ suggestion, load }: { suggestion: ReturnType<typeof suggestToday>; load: ReturnType<typeof trainingLoad> }) {
+function TodayInner({ suggestion, load, note }: { suggestion: ReturnType<typeof suggestToday>; load: ReturnType<typeof trainingLoad>; note?: ReturnType<typeof coachNotes>[number] }) {
   const { conn, run, ride, startChallenge, startRide, setScreen, todayPick, setTodayPick, profile } = useGame();
   const chosenId = todayPick?.suggestionId === suggestion.workout.id ? todayPick.workoutId : null;
   const setChosenId = (id: string | null) => setTodayPick(id ? { suggestionId: suggestion.workout.id, workoutId: id } : null);
@@ -77,6 +80,13 @@ function TodayInner({ suggestion, load }: { suggestion: ReturnType<typeof sugges
       </div>
 
       <p className="today-reason">{suggestion.reason}</p>
+      {suggestion.insight && <FtpNudge insight={suggestion.insight} />}
+      {note && (
+        <p className="coach-note muted small" title={note.text}>
+          🧭 {note.text}
+        </p>
+      )}
+      {note && <FtpNudge insight={note} />}
       {swapped && (
         <p className="muted small">
           Swapped from {suggestion.workout.name}.{' '}

@@ -323,3 +323,54 @@ describe('training blocks', () => {
     expect(s.workout.steps.reduce((a, x) => a + x.durationSec, 0)).toBeLessThanOrEqual(45 * 60);
   });
 });
+
+describe('trend insights shape the suggestion', () => {
+  const withMetrics = (r: RideLog, metrics: RideLog['metrics'], feel?: RideLog['feel']): RideLog => ({ ...r, metrics, feel });
+  const p = (rides: RideLog[], extra: Partial<CoachProfile> = {}): CoachProfile => ({
+    ftp: 250,
+    ftpHistory: [{ at: WED - 70 * DAY, ftp: 250 }],
+    completed: {},
+    rides,
+    ...extra,
+  });
+  // Zone 2 heart rate at 170 W: 120 bpm a month or more ago, 112 bpm in the last week
+  const hrDown = [
+    ...[49, 42, 35, 28].map((d) => withMetrics(ride(WED, d), { aerobic: { sec: 1800, watts: 170, hr: 120 } })),
+    ...[6, 4, 2].map((d) => withMetrics(ride(WED, d), { aerobic: { sec: 1800, watts: 170, hr: 112 } })),
+  ];
+
+  it('suggests a retest (or a small raise) when heart rate is lower for the same watts', () => {
+    const s = suggestToday(p(hrDown), WED);
+    expect(s.workout.id).toBe('ramp-test');
+    expect(s.insight?.id).toBe('ftp-low');
+    expect(s.reason).toMatch(/raise it to 255 W/);
+  });
+
+  it('waits a day after a hard session before suggesting the retest', () => {
+    const s = suggestToday(p([...hrDown, ride(WED, 1, { id: 'wk-vo2-5x3' })]), WED);
+    expect(s.workout.id).not.toBe('ramp-test');
+  });
+
+  it('"Not now" puts the regular suggestion back', () => {
+    const s = suggestToday(p(hrDown, { coach: { ftpNudgeDismissedAt: WED - DAY } }), WED);
+    expect(s.workout.id).not.toBe('ramp-test');
+  });
+
+  it('eases off when the last three rides all felt really hard', () => {
+    const rides = [5, 3, 2].map((d) => withMetrics(ride(WED, d), undefined, 'hard'));
+    const s = suggestToday(p(rides), WED);
+    expect(s.workout.id).toBe('wk-recovery-30');
+    expect(s.insight?.id).toBe('feel-hard');
+  });
+
+  it('swaps an easy day for spin-ups when cadence drops on hard efforts', () => {
+    const rides = [
+      ...[40, 35, 30, 26, 23].map((d) => withMetrics(ride(WED, d), { cadence: { easy: 90 } })),
+      ...[5, 3].map((d) => withMetrics(ride(WED, d), { cadence: { easy: 90, hard: 80 } })),
+      ride(WED, 1, { id: 'wk-vo2-5x3' }),
+    ];
+    const s = suggestToday(p(rides), WED);
+    expect(s.workout.id).toBe('wk-z2-cadence');
+    expect(s.reason).toMatch(/cadence drops on hard efforts/);
+  });
+});

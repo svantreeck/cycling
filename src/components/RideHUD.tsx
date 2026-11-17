@@ -8,6 +8,7 @@ import { ERG_MAX_W, ERG_MIN_W, useGame } from '../store/gameStore';
 import { convertDistance, convertSpeed, distanceLabel, speedLabel } from '../units';
 import { Avatar } from './Avatar';
 import { ChallengeRunner } from './ChallengeRunner';
+import { CoachNotesCard, RideCheckIn } from './CoachNotes';
 import { ConnectPanel, SimControls } from './ConnectPanel';
 import { RideExport } from './RideExport';
 import { XPBar } from './XPBar';
@@ -278,6 +279,8 @@ function RideSummaryCard() {
       </div>
       <ZoneDistribution zoneSec={r.zoneSec} />
       <StatGains zoneSec={r.zoneSec} />
+      <RideCheckIn ride={r} />
+      {r.durationSec >= 60 && <CoachNotesCard />}
       <RideExport ride={r} />
     </div>
   );

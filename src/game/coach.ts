@@ -1,4 +1,6 @@
 import { RAMP_TEST, WORKOUTS, challengeById, roman, totalDurationSec, type Challenge, type WorkoutCategory } from './challenges';
+import { coachInsights, isCadenceInsight, type Insight } from './insights';
+import type { RideMetrics } from './rideMetrics';
 
 /**
  * The coach: training load (fitness / fatigue / form) and "today's ride".
@@ -17,6 +19,16 @@ export interface RideLog {
   /** seconds per power zone, index 0 = Z1 */
   zoneSec: number[];
   challenges: { id: string; passed: boolean; feel?: Feel }[];
+  /** post-ride check-in for the ride as a whole */
+  feel?: Feel;
+  /** cadence and heart-rate numbers for spotting trends; missing on older rides */
+  metrics?: RideMetrics;
+}
+
+/** What the rider has told the coach about its suggestions. */
+export interface CoachState {
+  /** when the rider last said "not now" to raising or retesting their FTP */
+  ftpNudgeDismissedAt?: number;
 }
 
 export interface CoachProfile {
@@ -26,6 +38,7 @@ export interface CoachProfile {
   rides: RideLog[];
   plan?: TrainingPlan;
   promotions?: Promotion[];
+  coach?: CoachState;
 }
 
 // ---- training load --------------------------------------------------------
@@ -140,6 +153,8 @@ export interface Suggestion {
   workout: Challenge;
   kind: SuggestionKind;
   reason: string;
+  /** the trend that shaped this suggestion, if one did */
+  insight?: Insight;
 }
 
 // ---- goals and plans --------------------------------------------------------
@@ -392,6 +407,16 @@ function fitZ2(maxMin: number): Challenge {
   return fits.length ? fits[fits.length - 1] : rides[0];
 }
 
+/** The coach's current opinions about the rider's trends, most important first. */
+export function coachNotes(p: CoachProfile, now = Date.now()): Insight[] {
+  return coachInsights(
+    { ftp: p.ftp, ftpHistory: p.ftpHistory, rides: p.rides, form: trainingLoad(p.rides, now).form, ftpNudgeDismissedAt: p.coach?.ftpNudgeDismissedAt },
+    now,
+  );
+}
+
+const SPIN_UPS = 'wk-z2-cadence';
+
 export function suggestToday(p: CoachProfile, now = Date.now()): Suggestion {
   const today = dayIndex(now);
   const dow = weekday(today);
@@ -454,6 +479,15 @@ export function suggestToday(p: CoachProfile, now = Date.now()): Suggestion {
     };
   }
 
+  // 5b. Trends that say back off: every recent ride felt really hard, or fatigue is holding heart rate down.
+  const notes = coachNotes(p, now);
+  const backOff = notes.find((n) => n.id === 'feel-hard' || n.id === 'tired-hr');
+  if (backOff) {
+    return { workout: recovery, kind: 'recovery', insight: backOff, reason: `${backOff.text} An easy spin today lets you catch up.` };
+  }
+
+  const hardDays = new Set(p.rides.filter((r) => dayIndex(r.startedAt) < today && isHardRide(r)).map((r) => dayIndex(r.startedAt)));
+
   // 6. End of a training block: FTP retest for promotion.
   if (plan && block?.retestFor && !isPromoted(p.promotions, plan, block.retestFor) && (daysToEvent == null || daysToEvent > 7)) {
     const rank = (p.promotions?.length ?? 0) + 1;
@@ -464,10 +498,26 @@ export function suggestToday(p: CoachProfile, now = Date.now()): Suggestion {
     };
   }
 
-  const hardDays = new Set(p.rides.filter((r) => dayIndex(r.startedAt) < today && isHardRide(r)).map((r) => dayIndex(r.startedAt)));
+  // 6b. Trends say the FTP is too low: retest (or raise it) when fresh enough to test, outside a recovery week (which
+  // ends in a retest anyway) and away from an event.
+  const ftpLow = notes.find((n) => n.id === 'ftp-low');
+  if (ftpLow && !block?.recovery && !hardDays.has(today - 1) && load.form >= -15 && (daysToEvent == null || daysToEvent > 7)) {
+    return {
+      workout: RAMP_TEST,
+      kind: 'test',
+      insight: ftpLow,
+      reason: `${ftpLow.text} Retest to set your new FTP, or raise it to ${ftpLow.raiseFtpTo} W if you'd rather not test today.`,
+    };
+  }
+
   const hardThisWeek = [...hardDays].filter((d) => d >= today - 7).length;
   const hardBudget = block?.recovery ? 1 : hardPerWeek(plan);
+  const cadence = notes.find(isCadenceInsight);
+  const spinUps = challengeById(SPIN_UPS)!;
   const easy = (reason: string): Suggestion => {
+    if (cadence && (!plan || minutes(spinUps) <= dayMin)) {
+      return { workout: spinUps, kind: 'endurance', insight: cadence, reason: `${reason} Spin-up drills today, because ${cadence.brief}.` };
+    }
     if (plan) return { workout: fitZ2(Math.min(dayMin, 90)), kind: 'endurance', reason };
     const { workout } = progressIn('endurance', attempts, weekend ? WEEKEND_MAX_MIN : 60, pureZ2);
     return { workout, kind: 'endurance', reason };
