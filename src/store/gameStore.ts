@@ -24,6 +24,16 @@ export type ConnStatus = 'disconnected' | 'connecting' | 'connected' | 'lost';
 const IDLE_PAUSE_MS = 5000;
 const MAX_DT_MS = 5000;
 const AUTOSAVE_MS = 30_000;
+export const ERG_MIN_W = 50;
+export const ERG_MAX_W = 1000;
+
+/** User-chosen ERG target for free riding (outside challenges). */
+export interface FreeErg {
+  on: boolean;
+  watts: number;
+}
+
+const clampErg = (w: number) => Math.round(Math.min(ERG_MAX_W, Math.max(ERG_MIN_W, w)));
 
 export interface LiveRide {
   startedAt: number;
@@ -64,6 +74,7 @@ interface GameState {
   runSnap: RunSnapshot | null;
   outcome: RunOutcome | null;
   celebrations: Celebration[];
+  freeErg: FreeErg;
 
   setScreen(s: Screen): void;
   connectBluetooth(): Promise<void>;
@@ -76,6 +87,8 @@ interface GameState {
   abortChallenge(): void;
   dismissOutcome(): void;
   dismissCelebration(): void;
+  /** Turn free-ride ERG on/off or change its target. Ignored while a challenge controls the trainer. */
+  setFreeErg(patch: Partial<FreeErg>): void;
   updateProfile(patch: Partial<Pick<Profile, 'name' | 'ftp' | 'cosmetics' | 'settings'>>): void;
   importJson(json: string): void;
   exportJson(): string;
@@ -221,10 +234,12 @@ export const useGame = create<GameState>((set, get) => {
     if (Date.now() - lastSave > AUTOSAVE_MS) persist(get().profile);
   };
 
+  const ergOff = () => set((s) => ({ freeErg: { ...s.freeErg, on: false } }));
+
   const attach = async (trainer: Trainer) => {
     unsubs.forEach((u) => u());
     unsubs = [];
-    set({ trainer, conn: 'connecting', error: null });
+    set((s) => ({ trainer, conn: 'connecting', error: null, freeErg: { ...s.freeErg, on: false } }));
     unsubs.push(trainer.onSample(handleSample));
     unsubs.push(
       trainer.onDisconnect(() => {
@@ -241,8 +256,10 @@ export const useGame = create<GameState>((set, get) => {
     }
   };
 
+  const initialProfile = loadProfile();
+
   return {
-    profile: loadProfile(),
+    profile: initialProfile,
     screen: 'home',
     trainer: null,
     conn: 'disconnected',
@@ -254,6 +271,7 @@ export const useGame = create<GameState>((set, get) => {
     runSnap: null,
     outcome: null,
     celebrations: [],
+    freeErg: { on: false, watts: clampErg(Math.round((initialProfile.ftp * 0.6) / 5) * 5) },
 
     setScreen: (screen) => set({ screen }),
 
@@ -261,13 +279,14 @@ export const useGame = create<GameState>((set, get) => {
     connectMock: () => attach(new MockTrainer()),
 
     reconnect: async () => {
-      const { trainer, run, ride } = get();
+      const { trainer, run, ride, freeErg } = get();
       if (!trainer) return;
       set({ conn: 'connecting', error: null });
       try {
         await trainer.connect();
         set({ conn: 'connected', ride: ride ? { ...ride, lastT: null } : ride });
         if (run) sendCommands(run.resume());
+        else if (freeErg.on) sendCommands([{ type: 'erg', watts: freeErg.watts }]);
       } catch (e) {
         set({ conn: 'lost', error: errorMessage(e) });
       }
@@ -280,6 +299,7 @@ export const useGame = create<GameState>((set, get) => {
       unsubs.forEach((u) => u());
       unsubs = [];
       await trainer?.disconnect().catch(() => undefined);
+      ergOff();
       set({ trainer: null, conn: 'disconnected', sample: null });
     },
 
@@ -308,6 +328,7 @@ export const useGame = create<GameState>((set, get) => {
       const { ride, profile } = get();
       if (!ride) return;
       sendCommands([{ type: 'free' }]);
+      ergOff();
       const summary: RideSummary = {
         id: `${ride.startedAt}`,
         startedAt: ride.startedAt,
@@ -338,6 +359,8 @@ export const useGame = create<GameState>((set, get) => {
         });
       }
       if (!get().ride) get().startRide();
+      // The challenge takes over the trainer; free-ride ERG stays off afterwards.
+      ergOff();
       const newRun = new ChallengeRun(c, profile.ftp);
       sendCommands(newRun.start());
       set({ run: newRun, runSnap: newRun.snapshot(), outcome: null, screen: 'ride' });
@@ -353,6 +376,19 @@ export const useGame = create<GameState>((set, get) => {
 
     dismissOutcome: () => set({ outcome: null, runSnap: null }),
     dismissCelebration: () => set((s) => ({ celebrations: s.celebrations.slice(1) })),
+
+    setFreeErg: (patch) => {
+      const { run, trainer, conn, freeErg } = get();
+      if (run) return;
+      const next: FreeErg = {
+        on: (patch.on ?? freeErg.on) && !!trainer?.capabilities.erg,
+        watts: clampErg(patch.watts ?? freeErg.watts),
+      };
+      set({ freeErg: next });
+      if (conn !== 'connected') return;
+      if (next.on && (!freeErg.on || next.watts !== freeErg.watts)) sendCommands([{ type: 'erg', watts: next.watts }]);
+      else if (!next.on && freeErg.on) sendCommands([{ type: 'free' }]);
+    },
 
     updateProfile: (patch) => {
       const next = { ...get().profile, ...patch };

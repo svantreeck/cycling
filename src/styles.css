@@ -172,6 +172,12 @@ input[type='range'] { padding: 0; }
 .metric.clickable { cursor: pointer; }
 .metric.clickable:hover { filter: brightness(1.15); }
 
+.erg-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.erg-head .segmented { margin-top: 0; }
+.erg-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0 6px; }
+.erg-input { flex-direction: row; align-items: baseline; gap: 0; margin: 0; }
+.erg-input input { width: 90px; font-size: 1.3rem; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums; }
+
 /* sim */
 .sim { border: 1px dashed #4a5280; }
 .sim-title { font-weight: 700; }

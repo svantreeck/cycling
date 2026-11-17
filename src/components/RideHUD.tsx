@@ -1,7 +1,8 @@
 import { tierFor } from '../game/avatarTiers';
 import { fmtDur } from '../game/challenges';
 import { ZONES, zoneFor } from '../game/zones';
-import { useGame } from '../store/gameStore';
+import { useEffect, useState } from 'react';
+import { ERG_MAX_W, ERG_MIN_W, useGame } from '../store/gameStore';
 import { convertSpeed, speedLabel } from '../units';
 import { Avatar } from './Avatar';
 import { ChallengeRunner } from './ChallengeRunner';
@@ -9,7 +10,7 @@ import { ConnectPanel, SimControls } from './ConnectPanel';
 import { XPBar } from './XPBar';
 
 export function RideScreen() {
-  const { sample, ride, profile, startRide, endRide, runSnap, conn, lastRide, setScreen, updateProfile } = useGame();
+  const { sample, ride, profile, startRide, endRide, runSnap, run, conn, lastRide, setScreen, updateProfile, freeErg } = useGame();
   const unit = profile.settings.speedUnit;
   const toggleUnit = () => updateProfile({ settings: { ...profile.settings, speedUnit: unit === 'kmh' ? 'mph' : 'kmh' } });
   const power = sample?.power ?? 0;
@@ -32,7 +33,14 @@ export function RideScreen() {
       </div>
 
       <div className="hud">
-        <Metric label="Power" value={power} unit="W" big highlight={zone.color} sub={`${pctFtp}% FTP`} />
+        <Metric
+          label="Power"
+          value={power}
+          unit="W"
+          big
+          highlight={zone.color}
+          sub={freeErg.on && !run ? `${pctFtp}% FTP · ERG ${freeErg.watts} W` : `${pctFtp}% FTP`}
+        />
         <Metric label="Cadence" value={Math.round(sample?.cadence ?? 0)} unit="rpm" />
         <Metric
           label="Speed"
@@ -48,6 +56,8 @@ export function RideScreen() {
       <ZoneBar power={power} ftp={profile.ftp} />
 
       {runSnap && <ChallengeRunner />}
+
+      {!run && <ErgControl />}
 
       <XPBar levels={profile.levels} compact />
 
@@ -72,6 +82,69 @@ export function RideScreen() {
 
       {lastRide && !ride && <RideSummaryCard />}
       <SimControls />
+    </div>
+  );
+}
+
+const ERG_STEP = 10;
+
+/** Free-ride trainer mode: Sim (rider controls effort with gears) or ERG (trainer holds a wattage). */
+function ErgControl() {
+  const { trainer, conn, freeErg, setFreeErg, profile } = useGame();
+  const [draft, setDraft] = useState(String(freeErg.watts));
+  useEffect(() => setDraft(String(freeErg.watts)), [freeErg.watts]);
+
+  if (conn !== 'connected' || !trainer) return null;
+  if (!trainer.capabilities.erg) {
+    return <div className="card muted small">This trainer is connected read-only, so ERG isn't available.</div>;
+  }
+
+  const commitDraft = () => {
+    const w = Math.round(+draft);
+    if (Number.isFinite(w) && draft.trim() !== '') setFreeErg({ watts: w });
+    else setDraft(String(freeErg.watts));
+  };
+
+  return (
+    <div className="card erg">
+      <div className="erg-head">
+        <strong>Trainer mode</strong>
+        <div className="segmented">
+          <button className={!freeErg.on ? 'active' : ''} onClick={() => setFreeErg({ on: false })}>
+            Sim
+          </button>
+          <button className={freeErg.on ? 'active' : ''} onClick={() => setFreeErg({ on: true })}>
+            ERG
+          </button>
+        </div>
+      </div>
+      <div className="erg-row">
+        <button className="btn" onClick={() => setFreeErg({ watts: freeErg.watts - ERG_STEP })}>
+          −{ERG_STEP}
+        </button>
+        <label className="erg-input">
+          <input
+            type="number"
+            min={ERG_MIN_W}
+            max={ERG_MAX_W}
+            step={ERG_STEP}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commitDraft}
+            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+          />
+          <span className="unit">W</span>
+        </label>
+        <button className="btn" onClick={() => setFreeErg({ watts: freeErg.watts + ERG_STEP })}>
+          +{ERG_STEP}
+        </button>
+        <span className="muted small">{Math.round((freeErg.watts / profile.ftp) * 100)}% FTP</span>
+      </div>
+      <div className="muted small">
+        {freeErg.on
+          ? 'The trainer holds this wattage whatever gear or cadence you ride.'
+          : 'Sim mode: flat road, you set the effort with your gears. Switch to ERG to hold the target above.'}
+      </div>
     </div>
   );
 }
