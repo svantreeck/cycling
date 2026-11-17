@@ -21,6 +21,7 @@ export interface CoachProfile {
   ftpHistory: { at: number; ftp: number }[];
   completed: Record<string, { count: number }>;
   rides: RideLog[];
+  plan?: TrainingPlan;
 }
 
 // ---- training load --------------------------------------------------------
@@ -86,11 +87,6 @@ export function trainingLoad(rides: RideLog[], now = Date.now()): TrainingLoad {
 
 const HARD_CATEGORIES: WorkoutCategory[] = ['sweetspot', 'threshold', 'vo2max', 'tempo', 'anaerobic', 'sprint'];
 
-/** Ideal days between sessions of each hard category; the most "overdue" one is picked next. */
-const SPACING_DAYS: Record<string, number> = { sweetspot: 4, threshold: 7, vo2max: 7, tempo: 10, anaerobic: 14, sprint: 14 };
-
-/** At most this many hard days in the last 7, i.e. keep most riding easy (roughly 80/20). */
-export const HARD_DAYS_PER_WEEK = 3;
 
 /** A ride counts as hard if it included a hard workout or challenge, or enough time at threshold or above. */
 export function isHardRide(r: RideLog): boolean {
@@ -141,9 +137,140 @@ export interface Suggestion {
   reason: string;
 }
 
+// ---- goals and plans --------------------------------------------------------
+
+export type GoalId = 'fitness' | 'base' | 'ftp' | 'event';
+
+export interface TrainingPlan {
+  goal: GoalId;
+  /** minutes available per weekday, index 0 = Sunday … 6 = Saturday; 0 = rest day */
+  minutesByDay: number[];
+  /** local date YYYY-MM-DD, for the event goal */
+  eventDate?: string;
+  createdAt: number;
+}
+
+export interface Goal {
+  name: string;
+  blurb: string;
+  /** most hard days in any 7 */
+  hardPerWeek: number;
+  /** typical training stress per hour of riding, for the weekly target */
+  tssPerHour: number;
+  /** hard categories in priority order, with ideal days between sessions */
+  categories: [WorkoutCategory, number][];
+}
+
+/** Used when no plan is set. */
+const DEFAULT_RULES: Goal = {
+  name: 'No plan',
+  blurb: '',
+  hardPerWeek: 3,
+  tssPerHour: 55,
+  categories: [['sweetspot', 4], ['threshold', 7], ['vo2max', 7], ['tempo', 10], ['anaerobic', 14], ['sprint', 14]],
+};
+
+export const GOALS: Record<GoalId, Goal> = {
+  fitness: {
+    name: 'Get fitter',
+    blurb: 'All-round fitness: plenty of Zone 2 plus two varied key workouts a week.',
+    hardPerWeek: 2,
+    tssPerHour: 55,
+    categories: [['sweetspot', 5], ['vo2max', 7], ['threshold', 10], ['tempo', 10], ['anaerobic', 14], ['sprint', 14]],
+  },
+  base: {
+    name: 'Build endurance',
+    blurb: 'Mostly Zone 2 to grow your aerobic engine, with one tempo or sweet spot session a week.',
+    hardPerWeek: 1,
+    tssPerHour: 50,
+    categories: [['tempo', 7], ['sweetspot', 7], ['threshold', 21], ['vo2max', 21]],
+  },
+  ftp: {
+    name: 'Raise my FTP',
+    blurb: 'Sweet spot and threshold work, topped up with VO₂max, to push your FTP up.',
+    hardPerWeek: 3,
+    tssPerHour: 60,
+    categories: [['sweetspot', 4], ['threshold', 7], ['vo2max', 10], ['tempo', 14], ['anaerobic', 21]],
+  },
+  event: {
+    name: 'Prepare for an event',
+    blurb: 'Threshold, VO₂max and punch for race day, with a long ride each week and a taper before the event.',
+    hardPerWeek: 2,
+    tssPerHour: 58,
+    categories: [['threshold', 7], ['vo2max', 7], ['sweetspot', 7], ['anaerobic', 10], ['sprint', 14], ['tempo', 14]],
+  },
+};
+
+export const DEFAULT_MINUTES_BY_DAY = [60, 0, 60, 45, 60, 0, 90]; // Sun … Sat
+
+/** Hard days allowed per week: the goal's number, but never more than about every other riding day. */
+export function hardPerWeek(plan: TrainingPlan | undefined): number {
+  if (!plan) return DEFAULT_RULES.hardPerWeek;
+  const days = plan.minutesByDay.filter((m) => m > 0).length;
+  return Math.max(1, Math.min(GOALS[plan.goal].hardPerWeek, Math.ceil(days / 2)));
+}
+
+export function weeklyTargetTss(plan: TrainingPlan): number {
+  const hours = plan.minutesByDay.reduce((a, m) => a + m, 0) / 60;
+  return Math.round((hours * GOALS[plan.goal].tssPerHour) / 10) * 10;
+}
+
+/** 0 = Sunday … 6 = Saturday, for a local day index. */
+export const weekday = (day: number) => (((day + 4) % 7) + 7) % 7;
+/** Day index of the Monday starting the week that contains `day`. */
+export const weekStart = (day: number) => day - ((weekday(day) + 6) % 7);
+
+export interface WeekDay {
+  day: number;
+  weekday: number;
+  plannedMin: number;
+  tss: number;
+  isToday: boolean;
+}
+
+export interface WeekProgress {
+  tss: number;
+  target: number;
+  days: WeekDay[];
+  /** consecutive weeks (ending now) that reached at least STREAK_FRACTION of the target */
+  streak: number;
+  /** this week already counts towards the streak */
+  thisWeekDone: boolean;
+}
+
+/** A week counts for the streak at 80% of its target, so one missed ride doesn't break it. */
+export const STREAK_FRACTION = 0.8;
+
+export function weekProgress(rides: RideLog[], plan: TrainingPlan, now = Date.now()): WeekProgress {
+  const today = dayIndex(now);
+  const daily = new Map<number, number>();
+  for (const r of rides) daily.set(dayIndex(r.startedAt), (daily.get(dayIndex(r.startedAt)) ?? 0) + rideTss(r));
+  const target = weeklyTargetTss(plan);
+  const weekTss = (start: number) => {
+    let t = 0;
+    for (let d = start; d < start + 7; d++) t += daily.get(d) ?? 0;
+    return t;
+  };
+  const start = weekStart(today);
+  const days: WeekDay[] = Array.from({ length: 7 }, (_, i) => {
+    const day = start + i;
+    return { day, weekday: weekday(day), plannedMin: plan.minutesByDay[weekday(day)], tss: Math.round(daily.get(day) ?? 0), isToday: day === today };
+  });
+  const tss = Math.round(weekTss(start));
+  const thisWeekDone = target > 0 && tss >= target * STREAK_FRACTION;
+  let streak = thisWeekDone ? 1 : 0;
+  for (let w = start - 7; w >= start - 7 * 104; w -= 7) {
+    if (target > 0 && weekTss(w) >= target * STREAK_FRACTION) streak++;
+    else break;
+  }
+  return { tss, target, days, streak, thisWeekDone };
+}
+
+// ---- picking ------------------------------------------------------------------
+
 /**
  * Next rung for a category: one up after a completed session, the same rung after one that was ended early,
- * and the first full-length rung if it has never been ridden. Never longer than `maxMin`.
+ * and the first full-length rung if it has never been ridden. Never longer than `maxMin` if avoidable.
  */
 function progressIn(cat: WorkoutCategory, attempts: Attempt[], maxMin: number, filter: (w: Challenge) => boolean = () => true) {
   const rungs = ladder(cat).filter(filter);
@@ -162,20 +289,38 @@ function progressIn(cat: WorkoutCategory, attempts: Attempt[], maxMin: number, f
         : `You've reached the top of this ladder. Nice!`
       : `Another go at ${last.workout.name}; you ended it early last time.`;
   }
+  const wanted = idx;
   while (idx > 0 && minutes(rungs[idx]) > maxMin) idx--;
+  if (idx < wanted) why = `${rungs[idx].name} fits the ${Math.round(maxMin)} minutes you have today.`;
   return { workout: rungs[idx], why };
 }
 
 const daysAgo = (n: number) => (n === 0 ? 'today' : n === 1 ? 'yesterday' : `${n} days ago`);
+const parseDate = (s: string) => {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d, 12).getTime();
+};
+
+const pureZ2 = (w: Challenge) => w.workout!.trains.length === 1 && w.workout!.trains[0] === 'endurance' && w.workout!.focus === 'Zone 2';
+
+/** Longest plain Zone 2 ride that fits in `maxMin` (or the shortest one if none fits). */
+function fitZ2(maxMin: number): Challenge {
+  const rides = ladder('endurance').filter(pureZ2);
+  const fits = rides.filter((w) => minutes(w) <= maxMin);
+  return fits.length ? fits[fits.length - 1] : rides[0];
+}
 
 export function suggestToday(p: CoachProfile, now = Date.now()): Suggestion {
   const today = dayIndex(now);
-  const dow = new Date(now).getDay();
+  const dow = weekday(today);
+  const plan = p.plan;
+  const rules = plan ? GOALS[plan.goal] : DEFAULT_RULES;
   const weekend = dow === 0 || dow === 6;
-  const maxMin = weekend ? WEEKEND_MAX_MIN : WEEKDAY_MAX_MIN;
+  const dayMin = plan ? plan.minutesByDay[dow] : weekend ? WEEKEND_MAX_MIN : WEEKDAY_MAX_MIN;
   const load = trainingLoad(p.rides, now);
   const attempts = workoutAttempts(p.rides);
   const recovery = challengeById('wk-recovery-30')!;
+  const daysToEvent = plan?.goal === 'event' && plan.eventDate ? dayIndex(parseDate(plan.eventDate)) - today : null;
 
   // 1. Untested FTP: every target depends on it.
   if (p.ftpHistory.length === 0 && (p.completed[RAMP_TEST.id]?.count ?? 0) === 0) {
@@ -186,7 +331,22 @@ export function suggestToday(p: CoachProfile, now = Date.now()): Suggestion {
     };
   }
 
-  // 2. Already trained today.
+  // 2. Event day and the days just before it.
+  if (daysToEvent === 0) {
+    return { workout: recovery, kind: 'rest', reason: "It's event day! No training today. Warm up well and enjoy it." };
+  }
+  if (daysToEvent === 1) {
+    return {
+      workout: challengeById('wk-sprint-6x10')!,
+      kind: 'endurance',
+      reason: 'Your event is tomorrow. A short session with a few sprints "opens" your legs without tiring them.',
+    };
+  }
+  if (daysToEvent === 2) {
+    return { workout: recovery, kind: 'recovery', reason: 'Two days to your event: keep it very easy so you arrive fresh.' };
+  }
+
+  // 3. Already trained today.
   if (load.todayTss >= 30) {
     return {
       workout: recovery,
@@ -195,7 +355,12 @@ export function suggestToday(p: CoachProfile, now = Date.now()): Suggestion {
     };
   }
 
-  // 3. Deep fatigue.
+  // 4. Rest day in the plan.
+  if (plan && dayMin === 0) {
+    return { workout: recovery, kind: 'rest', reason: "Today is a rest day in your plan. If you'd like to ride anyway, keep it very easy." };
+  }
+
+  // 5. Deep fatigue.
   if (load.form < -30) {
     return {
       workout: recovery,
@@ -206,45 +371,54 @@ export function suggestToday(p: CoachProfile, now = Date.now()): Suggestion {
 
   const hardDays = new Set(p.rides.filter((r) => dayIndex(r.startedAt) < today && isHardRide(r)).map((r) => dayIndex(r.startedAt)));
   const hardThisWeek = [...hardDays].filter((d) => d >= today - 7).length;
-  const pureZ2 = (w: Challenge) => w.workout!.trains.length === 1 && w.workout!.trains[0] === 'endurance' && w.workout!.focus === 'Zone 2';
+  const hardBudget = hardPerWeek(plan);
   const easy = (reason: string): Suggestion => {
-    const { workout } = progressIn('endurance', attempts, Math.min(maxMin, weekend ? WEEKEND_MAX_MIN : 60), pureZ2);
+    if (plan) return { workout: fitZ2(Math.min(dayMin, 90)), kind: 'endurance', reason };
+    const { workout } = progressIn('endurance', attempts, weekend ? WEEKEND_MAX_MIN : 60, pureZ2);
     return { workout, kind: 'endurance', reason };
   };
 
-  // 4. No history yet: start easy.
+  // 6. No history yet: start easy.
   if (p.rides.length === 0) {
     return easy('Welcome! Start with an easy Zone 2 ride to get a feel for ERG. The trainer sets the watts, so just pedal.');
   }
 
-  // 5. Hard yesterday → easy today.
+  // 7. Hard yesterday → easy today.
   if (hardDays.has(today - 1)) {
     return easy('You went hard yesterday. Easy Zone 2 today helps you recover and absorb it.');
   }
 
-  // 6. Intensity budget used up.
-  if (hardThisWeek >= HARD_DAYS_PER_WEEK) {
-    return easy(`You've had ${hardThisWeek} hard days this week. Keep the rest easy: most of your riding should be in Zone 2.`);
+  // 8. Intensity budget used up.
+  if (hardThisWeek >= hardBudget) {
+    const days = hardThisWeek === 1 ? '1 hard day' : `${hardThisWeek} hard days`;
+    return easy(`You've had ${days} in the last week${plan ? `, which is what your ${rules.name.toLowerCase()} plan calls for` : ''}. Keep the rest easy: most of your riding should be in Zone 2.`);
   }
 
-  // 7. Weekend with room for a long ride, if one hasn't happened this week.
-  const longThisWeek = p.rides.some((r) => dayIndex(r.startedAt) >= today - 6 && r.durationSec >= 80 * 60);
-  if (weekend && !longThisWeek && hardThisWeek >= 1) {
+  // 9. Long-ride day: the plan's longest day (or the weekend without a plan), once a week.
+  const longMin = plan ? Math.max(...plan.minutesByDay) : WEEKEND_MAX_MIN;
+  const isLongDay = plan ? dayMin === longMin && dayMin >= 75 : weekend && hardThisWeek >= 1;
+  const longThisWeek = p.rides.some((r) => dayIndex(r.startedAt) >= today - 6 && r.durationSec >= Math.min(80, longMin * 0.8) * 60);
+  if (isLongDay && !longThisWeek && (daysToEvent == null || daysToEvent > 7)) {
+    if (plan) {
+      return { workout: fitZ2(dayMin), kind: 'endurance', reason: `Long-ride day: you have ${dayMin} minutes, so it's time to grow your aerobic base.` };
+    }
     const { workout, why } = progressIn('endurance', attempts, WEEKEND_MAX_MIN, (w) => pureZ2(w) && minutes(w) >= 60);
     return { workout, kind: 'endurance', reason: `Weekend: time for a longer Zone 2 ride to grow your aerobic base. ${why}` };
   }
 
-  // 8. Hard day: pick the most overdue category.
+  // 10. Key workout: the most overdue category for this goal. Shorter in the taper week.
+  const taper = daysToEvent != null && daysToEvent > 0 && daysToEvent <= 7;
+  const maxMin = taper ? Math.min(dayMin, 45) : dayMin;
   const lastDay = (cat: WorkoutCategory) => {
     const a = [...attempts].reverse().find((x) => x.workout.workout!.category === cat);
     return a ? a.day : null;
   };
-  let best: WorkoutCategory = HARD_CATEGORIES[0];
+  let best = rules.categories[0][0];
   let bestScore = -Infinity;
-  HARD_CATEGORIES.forEach((cat, i) => {
+  rules.categories.forEach(([cat, spacing], i) => {
     const d = lastDay(cat);
     // never ridden → exactly due; ties go to earlier (more important) categories
-    const score = d == null ? 1 + (HARD_CATEGORIES.length - i) / 100 : (today - d) / SPACING_DAYS[cat];
+    const score = d == null ? 1 + (rules.categories.length - i) / 100 : (today - d) / spacing;
     if (score > bestScore) {
       bestScore = score;
       best = cat;
@@ -254,7 +428,8 @@ export function suggestToday(p: CoachProfile, now = Date.now()): Suggestion {
   const d = lastDay(best);
   const label = workout.workout!.focus;
   const due = d == null ? `Time to try some ${label.toLowerCase()} work.` : `${label} is due: your last session was ${daysAgo(today - d)}.`;
-  return { workout, kind: 'hard', reason: `${due} ${why}` };
+  const taperNote = taper ? ` Taper week: shorter sessions so you're fresh in ${daysToEvent} days.` : '';
+  return { workout, kind: 'hard', reason: `${due} ${why}${taperNote}` };
 }
 
 // ---- swaps ------------------------------------------------------------------

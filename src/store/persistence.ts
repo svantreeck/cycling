@@ -1,3 +1,4 @@
+import type { TrainingPlan } from '../game/coach';
 import { initialLevelState, type LevelState } from '../game/xp';
 
 export type SpeedUnit = 'kmh' | 'mph';
@@ -43,6 +44,8 @@ export interface Profile {
   settings: { onboarded: boolean; speedUnit: SpeedUnit };
   /** local date (YYYY-MM-DD) the daily bounty was last claimed */
   bountyClaimedOn?: string;
+  /** the rider's goal and weekly availability; the coach uses defaults when unset */
+  plan?: TrainingPlan;
 }
 
 export const defaultProfile = (): Profile => ({

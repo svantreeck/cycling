@@ -91,7 +91,7 @@ interface GameState {
   dismissCelebration(): void;
   /** Turn free-ride ERG on/off or change its target. Ignored while a challenge controls the trainer. */
   setFreeErg(patch: Partial<FreeErg>): void;
-  updateProfile(patch: Partial<Pick<Profile, 'name' | 'ftp' | 'cosmetics' | 'settings'>>): void;
+  updateProfile(patch: Partial<Pick<Profile, 'name' | 'ftp' | 'cosmetics' | 'settings' | 'plan'>>): void;
   importJson(json: string): void;
   exportJson(): string;
   resetProfile(): void;

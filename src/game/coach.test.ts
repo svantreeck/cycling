@@ -1,5 +1,20 @@
 import { challengeById } from './challenges';
-import { dayIndex, isHardRide, rideTss, suggestToday, swapsFor, trainingLoad, type CoachProfile, type RideLog } from './coach';
+import {
+  dayIndex,
+  hardPerWeek,
+  isHardRide,
+  rideTss,
+  suggestToday,
+  swapsFor,
+  trainingLoad,
+  weekday,
+  weeklyTargetTss,
+  weekProgress,
+  weekStart,
+  type CoachProfile,
+  type RideLog,
+  type TrainingPlan,
+} from './coach';
 
 const WED = new Date(2026, 10, 18, 12).getTime(); // Wednesday
 const SAT = new Date(2026, 10, 21, 12).getTime(); // Saturday
@@ -154,5 +169,98 @@ describe('swapsFor', () => {
 
   it('offers an easy ride instead of the ramp test', () => {
     expect(swapsFor(challengeById('ramp-test')!).easier!.id).toBe('wk-z2-45');
+  });
+});
+
+describe('plans', () => {
+  const plan = (goal: TrainingPlan['goal'], extra: Partial<TrainingPlan> = {}): TrainingPlan => ({
+    goal,
+    minutesByDay: [90, 0, 60, 45, 60, 0, 120], // Sun … Sat
+    createdAt: 0,
+    ...extra,
+  });
+  const withPlan = (rides: RideLog[], p: TrainingPlan): CoachProfile => ({ ...tested(rides), plan: p });
+  const MON = new Date(2026, 10, 16, 12).getTime();
+  const minutesOf = (c: { steps: { durationSec: number }[] }) => c.steps.reduce((a, s) => a + s.durationSec, 0) / 60;
+
+  it('weekday() and weekStart() use the local calendar, weeks starting Monday', () => {
+    expect(weekday(dayIndex(WED))).toBe(3);
+    expect(weekday(dayIndex(SAT))).toBe(6);
+    expect(weekStart(dayIndex(SAT))).toBe(dayIndex(MON));
+    expect(weekStart(dayIndex(MON))).toBe(dayIndex(MON));
+  });
+
+  it('rest days in the plan suggest rest', () => {
+    const s = suggestToday(withPlan([ride(MON, 3, { id: 'wk-z2-60' })], plan('fitness')), MON);
+    expect(s.kind).toBe('rest');
+    expect(s.reason).toMatch(/rest day/);
+  });
+
+  it('fits sessions to the time available today', () => {
+    // Wednesday has 45 minutes
+    const s = suggestToday(withPlan([ride(WED, 9, { id: 'wk-thr-2x10' }), ride(WED, 6, { id: 'wk-ss-4x10' }), ride(WED, 3, { id: 'wk-vo2-4x3' })], plan('ftp')), WED);
+    expect(minutesOf(s.workout)).toBeLessThanOrEqual(46);
+    expect(s.reason).toMatch(/fits the 45 minutes/);
+  });
+
+  it('the goal decides which category comes first', () => {
+    const rides = [ride(WED, 3, { id: 'wk-z2-60' })];
+    expect(suggestToday(withPlan(rides, plan('base')), WED).workout.workout!.category).toBe('tempo');
+    expect(suggestToday(withPlan(rides, plan('event', { eventDate: '2027-06-01' })), WED).workout.workout!.category).toBe('threshold');
+    expect(suggestToday(withPlan(rides, plan('ftp')), WED).workout.workout!.category).toBe('sweetspot');
+  });
+
+  it('base goal allows one hard day a week', () => {
+    expect(hardPerWeek(plan('base'))).toBe(1);
+    const s = suggestToday(withPlan([ride(WED, 3, { id: 'wk-tempo-3x10' })], plan('base')), WED);
+    expect(s.kind).toBe('endurance');
+  });
+
+  it('caps hard days at about every other riding day', () => {
+    expect(hardPerWeek(plan('ftp', { minutesByDay: [60, 0, 0, 60, 0, 0, 0] }))).toBe(1);
+    expect(hardPerWeek(plan('ftp'))).toBe(3);
+  });
+
+  it('long-ride day is the plan’s longest day', () => {
+    const s = suggestToday(withPlan([ride(SAT, 3, { id: 'wk-ss-3x10' })], plan('fitness')), SAT);
+    expect(s.kind).toBe('endurance');
+    expect(s.reason).toMatch(/Long-ride day/);
+    expect(s.workout.id).toBe('wk-z2-120');
+  });
+
+  it('event countdown: openers the day before, rest on the day, short sessions in taper week', () => {
+    const ev = (d: number) => {
+      const t = new Date(WED + d * DAY);
+      return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+    };
+    const rides = [ride(WED, 3, { id: 'wk-z2-60' })];
+    expect(suggestToday(withPlan(rides, plan('event', { eventDate: ev(0) })), WED).reason).toMatch(/event day/);
+    expect(suggestToday(withPlan(rides, plan('event', { eventDate: ev(1) })), WED).workout.id).toBe('wk-sprint-6x10');
+    const taper = suggestToday(withPlan(rides, plan('event', { eventDate: ev(5), minutesByDay: [90, 60, 90, 90, 90, 60, 120] })), WED);
+    expect(taper.kind).toBe('hard');
+    expect(minutesOf(taper.workout)).toBeLessThanOrEqual(46);
+    expect(taper.reason).toMatch(/Taper week/);
+  });
+
+  it('weekly target and progress', () => {
+    const p = plan('fitness');
+    expect(weeklyTargetTss(p)).toBe(Math.round(((375 / 60) * 55) / 10) * 10);
+    const w = weekProgress([ride(WED, 1, { tss: 60 }), ride(WED, 0, { tss: 40 })], p, WED);
+    expect(w.tss).toBe(100);
+    expect(w.days).toHaveLength(7);
+    expect(w.days[0].weekday).toBe(1);
+    expect(w.days.find((d) => d.isToday)!.tss).toBe(40);
+  });
+
+  it('streak counts consecutive weeks at 80% of target and survives an unfinished current week', () => {
+    const p = plan('fitness'); // target 340
+    const weekOf = (weeksBack: number, tss: number) => ride(MON, 7 * weeksBack - 2, { tss }); // Saturdays
+    const rides = [weekOf(1, 300), weekOf(2, 280), weekOf(3, 100), weekOf(4, 400)];
+    const w = weekProgress(rides, p, MON);
+    expect(w.thisWeekDone).toBe(false);
+    expect(w.streak).toBe(2);
+    const done = weekProgress([...rides, ride(MON, 0, { tss: 300 })], p, MON);
+    expect(done.thisWeekDone).toBe(true);
+    expect(done.streak).toBe(3);
   });
 });

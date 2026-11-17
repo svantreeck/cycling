@@ -21,8 +21,8 @@ const FORM_HINT: Record<string, string> = {
 
 export function TodayCard() {
   const { profile } = useGame();
-  const { rides, ftpHistory, completed, ftp } = profile;
-  const suggestion = useMemo(() => suggestToday({ ftp, ftpHistory, completed, rides }), [ftp, ftpHistory, completed, rides]);
+  const { rides, ftpHistory, completed, ftp, plan } = profile;
+  const suggestion = useMemo(() => suggestToday({ ftp, ftpHistory, completed, rides, plan }), [ftp, ftpHistory, completed, rides, plan]);
   const load = useMemo(() => trainingLoad(rides), [rides]);
   // Re-mount (resetting any swaps) when the suggestion itself changes, e.g. after a ride.
   return <TodayInner key={suggestion.workout.id + suggestion.kind} suggestion={suggestion} load={load} />;
@@ -61,7 +61,7 @@ function TodayInner({ suggestion, load }: { suggestion: ReturnType<typeof sugges
           Form <strong className={`form-${load.formLabel.toLowerCase()}`}>{load.form > 0 ? `+${load.form}` : load.form} · {load.formLabel}</strong>
         </span>
         <span title="Training stress over the last 7 days">
-          This week <strong>{load.weekTss} TSS</strong>
+          Last 7 days <strong>{load.weekTss} TSS</strong>
         </span>
       </div>
 

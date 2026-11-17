@@ -5,6 +5,7 @@ import { ConnectionChip, ConnectPanel, SimControls } from './components/ConnectP
 import { CelebrationModal } from './components/LevelUpModal';
 import { ProfileScreen } from './components/Profile';
 import { TodayCard } from './components/TodayCard';
+import { WeekCard } from './components/WeekCard';
 import { RideScreen } from './components/RideHUD';
 import { XPBar } from './components/XPBar';
 import { nextTier, tierFor } from './game/avatarTiers';
@@ -86,6 +87,7 @@ function Home() {
       <ConnectPanel />
 
       <TodayCard />
+      <WeekCard />
 
       <div className="home-actions">
         <button
