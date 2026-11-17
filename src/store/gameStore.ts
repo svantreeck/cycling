@@ -3,6 +3,17 @@ import { BluetoothTrainer } from '../ble/ftms';
 import { MockTrainer } from '../ble/mockTrainer';
 import { MockController, type Controller, type ControllerAction } from '../ble/controller';
 import { ZwiftClickController } from '../ble/zwiftClick';
+import {
+  canAutoReconnect,
+  forgetShifters,
+  forgetTrainer,
+  loadRemembered,
+  permittedDevice,
+  rememberShifter,
+  rememberTrainer,
+  waitUntilNearby,
+  type RememberedDevices,
+} from '../ble/remembered';
 import type { Trainer, TrainerSample, Unsubscribe } from '../ble/trainer';
 import { tiersReached, type AvatarTier } from '../game/avatarTiers';
 import { ChallengeRun, type RunResult, type RunSnapshot, type TrainerCommand } from '../game/challengeEngine';
@@ -100,9 +111,14 @@ interface GameState {
   todayPick: { suggestionId: string; workoutId: string } | null;
   /** bumps when the controller's own state changes (pods, battery, log) so panels re-render */
   controllerRev: number;
+  /** the trainer and shifters connected last time, for one-tap or automatic reconnects */
+  remembered: RememberedDevices;
+  /** what an automatic reconnect is waiting for, per slot */
+  autoStatus: { trainer?: string; shifters?: string };
 
   setScreen(s: Screen): void;
-  connectBluetooth(): Promise<void>;
+  /** Connect a Bluetooth trainer. With `name`, the picker lists only that device (one-tap reconnect). */
+  connectBluetooth(name?: string): Promise<void>;
   connectMock(): Promise<void>;
   reconnect(): Promise<void>;
   disconnect(): Promise<void>;
@@ -123,7 +139,10 @@ interface GameState {
   clearError(): void;
   connectMockController(): Promise<void>;
   /** Connect a Zwift Click/Ride/Play directly. If one is already connected, adds another side. */
-  connectZwiftClick(): Promise<void>;
+  connectZwiftClick(name?: string): Promise<void>;
+  /** On page load: reconnect remembered devices without prompting, where the browser allows it. */
+  autoConnect(): Promise<void>;
+  forgetDevices(kind: 'trainer' | 'shifters'): void;
   disconnectController(): Promise<void>;
   /** Handle a controller button (or keyboard shortcut). */
   controllerAction(a: ControllerAction): void;
@@ -293,7 +312,7 @@ export const useGame = create<GameState>((set, get) => {
 
   const ergOff = () => set((s) => ({ freeErg: { ...s.freeErg, on: false } }));
 
-  const attach = async (trainer: Trainer) => {
+  const attach = async (trainer: Trainer, quiet = false) => {
     unsubs.forEach((u) => u());
     unsubs = [];
     set((s) => ({ trainer, conn: 'connecting', error: null, freeErg: { ...s.freeErg, on: false } }));
@@ -306,10 +325,14 @@ export const useGame = create<GameState>((set, get) => {
     try {
       await trainer.connect();
       set({ conn: 'connected' });
+      if (trainer instanceof BluetoothTrainer && trainer.identity) {
+        rememberTrainer(trainer.identity);
+        set({ remembered: loadRemembered() });
+      }
     } catch (e) {
       unsubs.forEach((u) => u());
       unsubs = [];
-      set({ trainer: null, conn: 'disconnected', error: errorMessage(e) });
+      set({ trainer: null, conn: 'disconnected', error: quiet ? get().error : errorMessage(e) });
     }
   };
 
@@ -321,19 +344,26 @@ export const useGame = create<GameState>((set, get) => {
   };
 
   let controllerUnsubs: Unsubscribe[] = [];
-  const attachController = async (c: Controller) => {
+  const rememberPods = (c: Controller) => {
+    if (!(c instanceof ZwiftClickController)) return;
+    for (const p of c.podInfo) rememberShifter({ id: p.id, name: p.name });
+    set({ remembered: loadRemembered() });
+  };
+
+  const attachController = async (c: Controller, source: { device?: BluetoothDevice; name?: string } = {}, quiet = false) => {
     controllerUnsubs.forEach((u) => u());
     controllerUnsubs = [c.onAction((a) => get().controllerAction(a)), c.onDisconnect(() => set({ controllerConn: 'lost' }))];
     if (c instanceof ZwiftClickController) controllerUnsubs.push(c.onChange(() => set((s) => ({ controllerRev: s.controllerRev + 1 }))));
     set({ controller: c, controllerConn: 'connecting', error: null });
     try {
-      await c.connect();
+      await (c instanceof ZwiftClickController ? c.connect(source) : c.connect());
       set({ controllerConn: 'connected' });
       toast(`${c.name} connected`);
+      rememberPods(c);
     } catch (e) {
       controllerUnsubs.forEach((u) => u());
       controllerUnsubs = [];
-      set({ controller: null, controllerConn: 'disconnected', error: errorMessage(e) });
+      set({ controller: null, controllerConn: 'disconnected', error: quiet ? get().error : errorMessage(e) });
     }
   };
 
@@ -359,10 +389,12 @@ export const useGame = create<GameState>((set, get) => {
     toast: null,
     todayPick: null,
     controllerRev: 0,
+    remembered: loadRemembered(),
+    autoStatus: {},
 
     setScreen: (screen) => set({ screen }),
 
-    connectBluetooth: () => attach(new BluetoothTrainer()),
+    connectBluetooth: (name) => attach(new BluetoothTrainer(name ? { name } : {})),
     connectMock: () => attach(new MockTrainer()),
 
     reconnect: async () => {
@@ -551,18 +583,62 @@ export const useGame = create<GameState>((set, get) => {
 
     connectMockController: () => attachController(new MockController()),
 
-    connectZwiftClick: async () => {
+    connectZwiftClick: async (name) => {
       const c = get().controller;
       if (c instanceof ZwiftClickController && get().controllerConn === 'connected') {
         try {
-          await c.connect(); // add the other side
+          await c.connect(name ? { name } : {}); // add the other side
           toast('Zwift controller added');
+          rememberPods(c);
         } catch (e) {
           set({ error: errorMessage(e) });
         }
         return;
       }
-      await attachController(new ZwiftClickController());
+      await attachController(new ZwiftClickController(), name ? { name } : {});
+    },
+
+    autoConnect: async () => {
+      if (!canAutoReconnect()) return;
+      const rem = loadRemembered();
+      const status = (patch: GameState['autoStatus']) => set((st) => ({ autoStatus: { ...st.autoStatus, ...patch } }));
+
+      const trainerTask = (async () => {
+        if (!rem.trainer || get().trainer) return;
+        const dev = await permittedDevice(rem.trainer.id);
+        if (!dev) return;
+        status({ trainer: `Looking for ${dev.name ?? rem.trainer.name}… switch it on or start pedalling.` });
+        const near = await waitUntilNearby(dev, 60_000);
+        status({ trainer: undefined });
+        if (near && !get().trainer) await attach(new BluetoothTrainer({ device: dev }), true);
+      })();
+
+      // Pods connect one at a time: the first creates the controller, later ones join it.
+      let chain = Promise.resolve();
+      const podTasks = rem.shifters.map(async (r) => {
+        const dev = await permittedDevice(r.id);
+        if (!dev) return;
+        status({ shifters: 'Press a button on your Zwift Click to connect it.' });
+        const near = await waitUntilNearby(dev, 120_000);
+        if (!near) return;
+        chain = chain.then(async () => {
+          const c = get().controller;
+          if (c instanceof ZwiftClickController && get().controllerConn === 'connected') {
+            if (c.podInfo.some((p) => p.id === dev.id && p.state === 'connected')) return;
+            await c.connect({ device: dev }).then(() => rememberPods(c)).catch(() => undefined);
+          } else if (!c) {
+            await attachController(new ZwiftClickController(), { device: dev }, true);
+          }
+        });
+        await chain;
+      });
+      await Promise.all([trainerTask, Promise.all(podTasks).finally(() => status({ shifters: undefined }))]);
+    },
+
+    forgetDevices: (kind) => {
+      if (kind === 'trainer') forgetTrainer();
+      else forgetShifters();
+      set({ remembered: loadRemembered() });
     },
 
     disconnectController: async () => {

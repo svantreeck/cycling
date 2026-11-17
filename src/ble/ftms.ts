@@ -49,17 +49,32 @@ export class BluetoothTrainer implements Trainer {
   private lastCrank: { revs: number; time: number; at: number } | null = null;
   private lastCadence = 0;
 
+  /**
+   * `source.device`: an already-permitted device (automatic reconnect, no prompt).
+   * `source.name`: show the picker filtered to just this device name (one-tap reconnect).
+   */
+  constructor(private source: { device?: BluetoothDevice; name?: string } = {}) {}
+
   get name() {
-    return this.device?.name ?? 'Smart trainer';
+    return this.device?.name ?? this.source.device?.name ?? this.source.name ?? 'Smart trainer';
+  }
+
+  /** The connected device's identity, for remembering it. */
+  get identity(): { id: string; name: string } | null {
+    return this.device ? { id: this.device.id, name: this.device.name ?? 'Smart trainer' } : null;
   }
 
   async connect(): Promise<void> {
     if (!isWebBluetoothAvailable()) throw new Error('Web Bluetooth is not available in this browser.');
     if (!this.device) {
-      this.device = await navigator.bluetooth.requestDevice({
-        filters: [{ services: [FTMS_SERVICE] }, { services: [CPS_SERVICE] }, { namePrefix: 'KICKR' }],
-        optionalServices: [FTMS_SERVICE, CPS_SERVICE],
-      });
+      this.device =
+        this.source.device ??
+        (await navigator.bluetooth.requestDevice({
+          filters: this.source.name
+            ? [{ name: this.source.name }]
+            : [{ services: [FTMS_SERVICE] }, { services: [CPS_SERVICE] }, { namePrefix: 'KICKR' }],
+          optionalServices: [FTMS_SERVICE, CPS_SERVICE],
+        }));
       this.device.addEventListener('gattserverdisconnected', this.handleDisconnect);
     }
     this.intentionalDisconnect = false;

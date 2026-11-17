@@ -62,6 +62,10 @@ function ActionToast() {
 
 export default function App() {
   useControllerKeys();
+  // Reconnect the trainer and shifters from last time, where the browser allows it without a prompt.
+  useEffect(() => {
+    void useGame.getState().autoConnect();
+  }, []);
   const { screen, setScreen, error, clearError, profile, ride, run } = useGame();
   return (
     <div className="app">

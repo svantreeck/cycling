@@ -251,14 +251,22 @@ export class ZwiftClickController implements Controller {
   private buttons = new Emitter<{ button: ZwiftButton; action?: ControllerAction }>();
   private logLines: LogLine[] = [];
 
-  /** Prompt for a pod and connect it. Call again to add the other side. */
-  async connect(): Promise<void> {
+  /**
+   * Prompt for a pod and connect it. Call again to add the other side.
+   * `source.device`: an already-permitted pod (automatic reconnect, no prompt).
+   * `source.name`: show the picker filtered to this exact name (one-tap reconnect).
+   */
+  async connect(source: { device?: BluetoothDevice; name?: string } = {}): Promise<void> {
     const optionalServices = [ZWIFT_RIDE_SERVICE, ZWIFT_CUSTOM_SERVICE];
-    const device = await requestDeviceCompat([
-      { filters: [{ manufacturerData: [{ companyIdentifier: ZWIFT_COMPANY_ID }] }, { namePrefix: 'Zwift' }], optionalServices },
-      // iOS Web Bluetooth browsers may not support manufacturerData filters.
-      { filters: [{ namePrefix: 'Zwift' }], optionalServices },
-    ]);
+    const device =
+      source.device ??
+      (source.name
+        ? await navigator.bluetooth.requestDevice({ filters: [{ name: source.name }], optionalServices })
+        : await requestDeviceCompat([
+            { filters: [{ manufacturerData: [{ companyIdentifier: ZWIFT_COMPANY_ID }] }, { namePrefix: 'Zwift' }], optionalServices },
+            // iOS Web Bluetooth browsers may not support manufacturerData filters.
+            { filters: [{ namePrefix: 'Zwift' }], optionalServices },
+          ]));
     let pod = this.pods.find((p) => p.device.id === device.id);
     if (pod?.info.state === 'connected') {
       this.addLog({ at: Date.now(), pod: pod.label(), dir: 'info', text: 'already connected (pick the other side to add it)' });

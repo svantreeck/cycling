@@ -367,3 +367,5 @@ input[type='range'] { padding: 0; }
 .pill.done { background: rgba(46, 204, 113, 0.15); color: #2ecc71; }
 .devices .device-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .week.empty .btn { white-space: nowrap; }
+.flag-tip { margin: 10px 0 0; }
+.flag-tip code { font-size: 0.75rem; background: rgba(255, 255, 255, 0.06); padding: 1px 5px; border-radius: 4px; user-select: all; word-break: break-all; }
