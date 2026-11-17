@@ -2,8 +2,8 @@ import { tierFor } from '../game/avatarTiers';
 import { fmtDur } from '../game/challenges';
 import { GEAR_COUNT } from '../game/gears';
 import { statGains, SYSTEM_INFO, SYSTEMS } from '../game/stats';
-import { ZONES, zoneFor } from '../game/zones';
-import { useEffect, useState } from 'react';
+import { estimateMaxHr, hrZoneFor, ZONES, zoneFor } from '../game/zones';
+import { useEffect, useMemo, useState } from 'react';
 import { ERG_MAX_W, ERG_MIN_W, useGame } from '../store/gameStore';
 import { convertDistance, convertSpeed, distanceLabel, speedLabel } from '../units';
 import { Avatar } from './Avatar';
@@ -15,6 +15,8 @@ import { XPBar } from './XPBar';
 export function RideScreen() {
   const { sample, ride, profile, startRide, endRide, runSnap, run, conn, lastRide, setScreen, updateProfile, freeErg, hrm, hrmConn, heartRate, virtualKph, gear } = useGame();
   const speedKph = virtualKph ?? sample?.speedKph ?? 0;
+  const maxHr = useMemo(() => estimateMaxHr(profile.rides), [profile.rides]);
+  const hrZone = heartRate != null ? hrZoneFor(heartRate, maxHr) : null;
   const unit = profile.settings.speedUnit;
   const toggleUnit = () => updateProfile({ settings: { ...profile.settings, speedUnit: unit === 'kmh' ? 'mph' : 'kmh' } });
   const power = sample?.power ?? 0;
@@ -50,17 +52,16 @@ export function RideScreen() {
             label="Heart rate"
             value={heartRate ?? '–'}
             unit="bpm"
-            highlight="#ff5c6c"
+            highlight={hrZone?.color}
+            title={`Zones from a max heart rate of ${maxHr} bpm (the highest seen in your rides, at least 185).`}
             sub={
               hrmConn === 'reconnecting'
                 ? 'reconnecting…'
                 : hrmConn === 'lost'
                   ? 'monitor lost'
-                  : ride && ride.hrSec >= 30
-                    ? `avg ${Math.round(ride.hrBeats / ride.hrSec)}`
-                    : heartRate == null
-                      ? 'no signal'
-                      : undefined
+                  : !hrZone
+                    ? 'no signal'
+                    : `Z${hrZone.id} ${hrZone.name}${ride && ride.hrSec >= 30 ? ` · avg ${Math.round(ride.hrBeats / ride.hrSec)}` : ''}`
             }
           />
         )}
