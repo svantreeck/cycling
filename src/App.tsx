@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { ControllerAction } from './ble/obc';
 import { ChallengeBoard } from './components/ChallengeBoard';
 import { Avatar, type Mood } from './components/Avatar';
 import { trainingLoad, type TrainingLoad } from './game/coach';
-import { ConnectionChip, ConnectPanel, SimControls } from './components/ConnectPanel';
+import { ConnectionChip, ConnectPanel, ControllerPanel, MockControllerPad, SimControls } from './components/ConnectPanel';
 import { CelebrationModal } from './components/LevelUpModal';
 import { ProfileScreen } from './components/Profile';
 import { StatsPanel } from './components/StatsPanel';
@@ -21,7 +22,46 @@ const TABS: { id: Screen; label: string }[] = [
   { id: 'profile', label: 'Profile' },
 ];
 
+/** Keyboard shortcuts mirror the controller buttons (and work with BikeControl's keyboard mode). */
+const KEY_ACTIONS: Record<string, ControllerAction> = {
+  '=': 'shiftUp',
+  '+': 'shiftUp',
+  '-': 'shiftDown',
+  _: 'shiftDown',
+  ']': 'harder',
+  '[': 'easier',
+  n: 'skip',
+  p: 'pause',
+};
+
+function useControllerKeys() {
+  const controllerAction = useGame((s) => s.controllerAction);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const action = KEY_ACTIONS[e.key];
+      if (!action) return;
+      e.preventDefault();
+      controllerAction(action);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [controllerAction]);
+}
+
+function ActionToast() {
+  const toast = useGame((s) => s.toast);
+  if (!toast) return null;
+  return (
+    <div key={toast.id} className="action-toast">
+      {toast.text}
+    </div>
+  );
+}
+
 export default function App() {
+  useControllerKeys();
   const { screen, setScreen, error, clearError, profile, ride, run } = useGame();
   return (
     <div className="app">
@@ -52,6 +92,7 @@ export default function App() {
       </main>
 
       <CelebrationModal />
+      <ActionToast />
       {!profile.settings.onboarded && <Onboarding />}
     </div>
   );
@@ -107,6 +148,7 @@ function Home() {
       </section>
 
       <ConnectPanel />
+      <ControllerPanel />
 
       <TodayCard />
       <WeekCard />
@@ -148,6 +190,7 @@ function Home() {
         </div>
       )}
       <SimControls />
+      <MockControllerPad />
     </div>
   );
 }

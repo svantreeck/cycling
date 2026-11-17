@@ -31,8 +31,13 @@ export interface RunSnapshot {
   ruleLabel: string;
   /** seconds cadence has been below the crack threshold */
   crackSec: number;
-  /** workouts only: the clock is stopped because the rider stopped pedalling */
+  /** workouts only: the clock is stopped (rider stopped pedalling, or paused it) */
   paused: boolean;
+  /** workouts only: the rider paused it from a controller or the screen */
+  manualPause: boolean;
+  /** workouts only: rider adjustments to ERG targets */
+  intensityPct: number;
+  offsetW: number;
   result: RunResult | null;
 }
 
@@ -73,6 +78,10 @@ export class ChallengeRun {
   private rampStepsCompleted = 0;
   private needCommand = true;
   private paused = false;
+  private manualPause = false;
+  /** workout targets scale (harder/easier) and watt nudge (shifting in ERG) */
+  private intensityPct = 100;
+  private offsetW = 0;
 
   constructor(challenge: Challenge, ftp: number) {
     this.challenge = challenge;
@@ -91,8 +100,63 @@ export class ChallengeRun {
   currentCommand(): TrainerCommand {
     const s = this.currentStep;
     if (this.status === 'done') return { type: 'free' };
-    if (s.mode === 'erg' && s.targetPctFtp != null) return { type: 'erg', watts: this.watts(s.targetPctFtp) };
+    if (this.manualPause) return { type: 'free' };
+    if (s.mode === 'erg' && s.targetPctFtp != null) return { type: 'erg', watts: this.targetWatts(s.targetPctFtp) };
     return { type: 'free' };
+  }
+
+  // ---- rider controls (workouts only; challenges are tests and stay fixed) --------------------------
+
+  get adjustable() {
+    return !!this.challenge.workout && this.status !== 'done';
+  }
+
+  /** Harder/easier: scale ERG targets in 5% steps (50–150%). */
+  adjustIntensity(deltaPct: number): TrainerCommand[] {
+    if (!this.adjustable) return [];
+    this.intensityPct = Math.min(150, Math.max(50, this.intensityPct + deltaPct));
+    return this.ergRefresh();
+  }
+
+  /** Shifting in ERG: nudge targets by a few watts. */
+  nudgeWatts(deltaW: number): TrainerCommand[] {
+    if (!this.adjustable) return [];
+    this.offsetW = Math.max(-100, Math.min(100, this.offsetW + deltaW));
+    return this.ergRefresh();
+  }
+
+  /** Jump to the next step. */
+  skip(): TrainerCommand[] {
+    if (!this.adjustable) return [];
+    const finished = this.currentStep;
+    this.stepElapsedMs = 0;
+    this.lowCadenceMs = 0;
+    this.onStepFinished(finished);
+    this.stepIndex += 1;
+    if (this.stepIndex >= this.challenge.steps.length) {
+      this.stepIndex = this.challenge.steps.length - 1;
+      this.finishNaturally();
+      return [{ type: 'free' }];
+    }
+    return [this.currentCommand()];
+  }
+
+  /** Pause/resume the workout clock. While paused the trainer is released so the rider can soft-pedal. */
+  setPaused(on: boolean): TrainerCommand[] {
+    if (!this.adjustable || this.manualPause === on) return [];
+    this.manualPause = on;
+    this.paused = on;
+    return [this.currentCommand()];
+  }
+
+  /** True while the current step is under ERG control (so shifting should nudge watts, not change gear). */
+  get ergActive() {
+    const s = this.currentStep;
+    return this.status !== 'done' && !this.manualPause && s.mode === 'erg' && s.targetPctFtp != null;
+  }
+
+  private ergRefresh(): TrainerCommand[] {
+    return this.ergActive ? [this.currentCommand()] : [];
   }
 
   /** Call after a reconnect: forget the sample clock (so the gap isn't counted) and re-send the target. */
@@ -123,8 +187,8 @@ export class ChallengeRun {
     this.lastT = sample.t;
     if (dt === 0) return cmds;
 
-    // Workouts can't be failed: stopping pedalling just stops the clock.
-    this.paused = !!this.challenge.workout && sample.cadence < PAUSE_CADENCE;
+    // Workouts can't be failed: stopping pedalling (or pausing) just stops the clock.
+    this.paused = !!this.challenge.workout && (this.manualPause || sample.cadence < PAUSE_CADENCE);
     if (this.paused) return cmds;
 
     const step = this.currentStep;
@@ -177,7 +241,7 @@ export class ChallengeRun {
 
   snapshot(): RunSnapshot {
     const step = this.currentStep;
-    const target = step.mode === 'erg' && step.targetPctFtp != null ? this.watts(step.targetPctFtp) : null;
+    const target = step.mode === 'erg' && step.targetPctFtp != null && !this.manualPause ? this.targetWatts(step.targetPctFtp) : null;
     const { progress, label } = this.ruleProgress();
     return {
       challengeId: this.challenge.id,
@@ -192,6 +256,9 @@ export class ChallengeRun {
       ruleLabel: label,
       crackSec: this.lowCadenceMs / 1000,
       paused: this.paused,
+      manualPause: this.manualPause,
+      intensityPct: this.intensityPct,
+      offsetW: this.offsetW,
       result: this.result,
     };
   }
@@ -200,6 +267,11 @@ export class ChallengeRun {
 
   private watts(pct: number) {
     return Math.round((pct / 100) * this.ftp);
+  }
+
+  /** ERG target including the rider's adjustments (always ≥ 0). */
+  private targetWatts(pct: number) {
+    return Math.max(0, Math.round((pct / 100) * this.ftp * (this.intensityPct / 100) + this.offsetW));
   }
 
   private isDone() {

@@ -20,6 +20,8 @@ export class MockTrainer implements Trainer {
   timeWarp = 1;
 
   private ergTarget: number | null = null;
+  /** simulated grade in free ride (virtual gears change it) */
+  gradePct = 0;
   private samples = new Emitter<TrainerSample>();
   private disconnects = new Emitter<void>();
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -59,8 +61,9 @@ export class MockTrainer implements Trainer {
     this.ergTarget = Math.round(watts);
   }
 
-  async setFreeRide() {
+  async setFreeRide(gradePct = 0) {
     this.ergTarget = null;
+    this.gradePct = gradePct;
   }
 
   private tick() {
@@ -81,7 +84,8 @@ export class MockTrainer implements Trainer {
 
     const pedalling = this.ergTarget != null ? this.riderPower > 0 || this.riderCadence > 0 : this.riderPower > 0;
     let cadence = pedalling ? this.riderCadence * (1 - 0.6 * this.fatigueLevel) : 0;
-    let target = this.ergTarget ?? this.riderPower;
+    // In free ride a steeper (virtual) grade means more watts for the same effort.
+    let target = this.ergTarget ?? Math.round(this.riderPower * Math.max(0.4, 1 + 0.07 * this.gradePct));
     if (this.ergTarget != null && cadence < 30) target = 0; // can't turn the pedals
     if (!pedalling) target = 0;
 

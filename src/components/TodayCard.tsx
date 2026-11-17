@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { challengeById, fmtDur, totalDurationSec, trainingStress, type Challenge } from '../game/challenges';
 import { suggestToday, swapsFor, trainingLoad, type SuggestionKind } from '../game/coach';
 import { useGame } from '../store/gameStore';
@@ -29,8 +29,9 @@ export function TodayCard() {
 }
 
 function TodayInner({ suggestion, load }: { suggestion: ReturnType<typeof suggestToday>; load: ReturnType<typeof trainingLoad> }) {
-  const { conn, run, startChallenge, setScreen } = useGame();
-  const [chosenId, setChosenId] = useState<string | null>(null);
+  const { conn, run, startChallenge, setScreen, todayPick, setTodayPick } = useGame();
+  const chosenId = todayPick?.suggestionId === suggestion.workout.id ? todayPick.workoutId : null;
+  const setChosenId = (id: string | null) => setTodayPick(id ? { suggestionId: suggestion.workout.id, workoutId: id } : null);
   const workout: Challenge = (chosenId && challengeById(chosenId)) || suggestion.workout;
   const swapped = workout.id !== suggestion.workout.id;
   const swaps = swapsFor(workout);

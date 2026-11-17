@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import { BluetoothTrainer } from '../ble/ftms';
 import { MockTrainer } from '../ble/mockTrainer';
+import { MockController, ObcController, type Controller, type ControllerAction } from '../ble/obc';
 import type { Trainer, TrainerSample, Unsubscribe } from '../ble/trainer';
 import { tiersReached, type AvatarTier } from '../game/avatarTiers';
 import { ChallengeRun, type RunResult, type RunSnapshot, type TrainerCommand } from '../game/challengeEngine';
 import { challengeById, dailyBounty, RAMP_TEST, roman, type Challenge, type FitnessSystem } from '../game/challenges';
-import { blockInfo, isPromoted, type Feel } from '../game/coach';
+import { blockInfo, isPromoted, suggestToday, type Feel } from '../game/coach';
+import { clampGear, DEFAULT_GEAR, gradeForGear } from '../game/gears';
 import { challengeReward, promotionXp } from '../game/rewards';
 import { addStats, statGains, statLevel, SYSTEMS } from '../game/stats';
 import { addXp, rideXp, type AddXpResult } from '../game/xp';
@@ -84,6 +86,15 @@ interface GameState {
   outcome: RunOutcome | null;
   celebrations: Celebration[];
   freeErg: FreeErg;
+  /** BikeControl / OpenBikeControl controller */
+  controller: Controller | null;
+  controllerConn: ConnStatus;
+  /** virtual gear for free riding (1…GEAR_COUNT) */
+  gear: number;
+  /** brief feedback for controller/keyboard actions */
+  toast: { text: string; id: number } | null;
+  /** a swap chosen on the Today card, valid while the suggestion it replaced is still current */
+  todayPick: { suggestionId: string; workoutId: string } | null;
 
   setScreen(s: Screen): void;
   connectBluetooth(): Promise<void>;
@@ -105,7 +116,16 @@ interface GameState {
   exportJson(): string;
   resetProfile(): void;
   clearError(): void;
+  connectController(): Promise<void>;
+  connectMockController(): Promise<void>;
+  disconnectController(): Promise<void>;
+  /** Handle a controller button (or keyboard shortcut). */
+  controllerAction(a: ControllerAction): void;
+  setTodayPick(pick: { suggestionId: string; workoutId: string } | null): void;
 }
+
+/** Reported to controllers in OpenBikeControl App Information. */
+const APP_VERSION = '1.0.0';
 
 export const localDate = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -129,7 +149,8 @@ export const useGame = create<GameState>((set, get) => {
     const t = get().trainer;
     if (!t) return;
     for (const c of cmds) {
-      const p = c.type === 'erg' ? t.setErgPower(c.watts) : t.setFreeRide();
+      // Free riding uses the current virtual gear's grade.
+      const p = c.type === 'erg' ? t.setErgPower(c.watts) : t.setFreeRide(gradeForGear(get().gear));
       p.catch((e) => console.warn('Trainer command failed', c, e));
     }
   };
@@ -245,7 +266,12 @@ export const useGame = create<GameState>((set, get) => {
 
     const run = get().run;
     if (run) {
+      const before = run.snapshot();
       sendCommands(run.update(sample));
+      const after = run.snapshot();
+      // Haptic cues on the controller: a tap at each new step, a celebration when a workout is done.
+      if (after.stepIndex !== before.stepIndex) void get().controller?.haptic(after.step.kind === 'work' || after.step.kind === 'effort' ? 'double' : 'single');
+      if (after.result?.passed && !before.result) void get().controller?.haptic('success');
       if (run.done) finalizeRun(run);
       else set({ runSnap: run.snapshot() });
     }
@@ -275,6 +301,29 @@ export const useGame = create<GameState>((set, get) => {
     }
   };
 
+  let toastTimer: ReturnType<typeof setTimeout> | null = null;
+  const toast = (text: string) => {
+    if (toastTimer) clearTimeout(toastTimer);
+    set({ toast: { text, id: Date.now() } });
+    toastTimer = setTimeout(() => set({ toast: null }), 1800);
+  };
+
+  let controllerUnsubs: Unsubscribe[] = [];
+  const attachController = async (c: Controller) => {
+    controllerUnsubs.forEach((u) => u());
+    controllerUnsubs = [c.onAction((a) => get().controllerAction(a)), c.onDisconnect(() => set({ controllerConn: 'lost' }))];
+    set({ controller: c, controllerConn: 'connecting', error: null });
+    try {
+      await c.connect();
+      set({ controllerConn: 'connected' });
+      toast(`${c.name} connected`);
+    } catch (e) {
+      controllerUnsubs.forEach((u) => u());
+      controllerUnsubs = [];
+      set({ controller: null, controllerConn: 'disconnected', error: errorMessage(e) });
+    }
+  };
+
   const initialProfile = loadProfile();
 
   return {
@@ -291,6 +340,11 @@ export const useGame = create<GameState>((set, get) => {
     outcome: null,
     celebrations: [],
     freeErg: { on: false, watts: clampErg(Math.round((initialProfile.ftp * 0.6) / 5) * 5) },
+    controller: null,
+    controllerConn: 'disconnected',
+    gear: DEFAULT_GEAR,
+    toast: null,
+    todayPick: null,
 
     setScreen: (screen) => set({ screen }),
 
@@ -474,6 +528,88 @@ export const useGame = create<GameState>((set, get) => {
     },
 
     clearError: () => set({ error: null }),
+
+    connectController: () => attachController(new ObcController(APP_VERSION)),
+    connectMockController: () => attachController(new MockController()),
+
+    disconnectController: async () => {
+      const c = get().controller;
+      controllerUnsubs.forEach((u) => u());
+      controllerUnsubs = [];
+      await c?.disconnect().catch(() => undefined);
+      set({ controller: null, controllerConn: 'disconnected' });
+    },
+
+    setTodayPick: (todayPick) => set({ todayPick }),
+
+    controllerAction: (a) => {
+      const { run, freeErg, conn, profile, celebrations, outcome, todayPick } = get();
+      const refresh = () => set({ runSnap: run!.snapshot() });
+
+      switch (a) {
+        case 'shiftUp':
+        case 'shiftDown': {
+          const dir = a === 'shiftUp' ? 1 : -1;
+          if (run?.ergActive) {
+            if (!run.adjustable) return toast('Targets are fixed during challenges');
+            sendCommands(run.nudgeWatts(5 * dir));
+            refresh();
+            const s = run.snapshot();
+            return toast(`Target ${s.targetWatts} W (${s.offsetW >= 0 ? '+' : ''}${s.offsetW} W)`);
+          }
+          if (!run && freeErg.on) {
+            get().setFreeErg({ watts: freeErg.watts + 5 * dir });
+            return toast(`ERG ${get().freeErg.watts} W`);
+          }
+          const gear = clampGear(get().gear + dir);
+          set({ gear });
+          if (conn === 'connected') sendCommands([{ type: 'free' }]);
+          return toast(`Gear ${gear}`);
+        }
+        case 'harder':
+        case 'easier': {
+          const dir = a === 'harder' ? 1 : -1;
+          if (run) {
+            if (!run.adjustable) return toast('Targets are fixed during challenges');
+            sendCommands(run.adjustIntensity(5 * dir));
+            refresh();
+            return toast(`Intensity ${run.snapshot().intensityPct}%`);
+          }
+          if (freeErg.on) {
+            get().setFreeErg({ watts: freeErg.watts + 10 * dir });
+            return toast(`ERG ${get().freeErg.watts} W`);
+          }
+          return get().controllerAction(dir > 0 ? 'shiftUp' : 'shiftDown');
+        }
+        case 'skip': {
+          if (!run) return;
+          if (!run.adjustable) return toast("You can't skip steps in a challenge");
+          sendCommands(run.skip());
+          if (run.done) return finalizeRun(run);
+          refresh();
+          return toast(`Skipped to ${run.snapshot().step.label}`);
+        }
+        case 'pause':
+        case 'resume': {
+          if (!run) return;
+          if (!run.adjustable) return toast("Challenges can't be paused");
+          // One "pause" button toggles; an explicit "resume" always resumes.
+          const pause = a === 'pause' && !run.snapshot().manualPause;
+          sendCommands(run.setPaused(pause));
+          refresh();
+          return toast(pause ? 'Paused' : 'Resumed');
+        }
+        case 'select': {
+          if (celebrations.length) return get().dismissCelebration();
+          if (outcome) return get().dismissOutcome();
+          if (run || conn !== 'connected') return;
+          const suggestion = suggestToday({ ...profile });
+          const id = todayPick?.suggestionId === suggestion.workout.id ? todayPick.workoutId : suggestion.workout.id;
+          get().startChallenge(id);
+          return toast(`Starting ${challengeById(id)?.name ?? 'ride'}`);
+        }
+      }
+    },
   };
 });
 

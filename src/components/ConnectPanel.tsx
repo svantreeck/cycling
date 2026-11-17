@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { isWebBluetoothAvailable } from '../ble/ftms';
 import { MockTrainer } from '../ble/mockTrainer';
+import { MockController, type ControllerAction } from '../ble/obc';
 import { useGame } from '../store/gameStore';
 
 export function ConnectionChip() {
@@ -128,6 +129,88 @@ export function SimControls() {
         </button>
       </div>
       <div className="muted small">ERG target: {mock.currentErgTarget ?? 'free ride'} · ↑/↓ keys ±10 W (Shift ±50)</div>
+    </div>
+  );
+}
+
+/** Connect a BikeControl / OpenBikeControl controller (e.g. Zwift Click via BikeControl on your phone). */
+export function ControllerPanel() {
+  const { controller, controllerConn, connectController, connectMockController, disconnectController } = useGame();
+  const bt = isWebBluetoothAvailable();
+  const [help, setHelp] = useState(false);
+
+  if (controller && controllerConn === 'connected') {
+    return (
+      <div className="card connect controller">
+        <div>
+          🎮 <strong>{controller.name}</strong> <span className="muted">· controller connected</span>
+        </div>
+        <button className="btn ghost" onClick={() => void disconnectController()}>
+          Disconnect
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card connect controller">
+      <div>
+        🎮 <strong>Controller</strong>{' '}
+        <span className="muted small">
+          {controllerConn === 'lost' ? 'Connection lost.' : 'Shift gears and control workouts with a Zwift Click, Ride or Play via BikeControl.'}
+        </span>
+      </div>
+      <button className="btn" disabled={!bt || controllerConn === 'connecting'} onClick={() => void connectController()}>
+        {controllerConn === 'connecting' ? 'Connecting…' : controllerConn === 'lost' ? 'Reconnect BikeControl' : 'Connect BikeControl'}
+      </button>
+      <button className="btn ghost small" onClick={() => void connectMockController()}>
+        Simulated
+      </button>
+      <button className="link small" onClick={() => setHelp((h) => !h)}>
+        {help ? 'Hide setup' : 'How to set up'}
+      </button>
+      {help && (
+        <ol className="muted small controller-help">
+          <li>Install BikeControl on your phone or tablet (it must be a different device from this computer) and pair your Zwift Click, Ride or Play in it.</li>
+          <li>
+            In BikeControl, choose <strong>OpenBikeControl Compatible</strong> as your trainer app and turn on its <strong>Bluetooth</strong> connection.
+          </li>
+          <li>
+            Click <strong>Connect BikeControl</strong> here and pick <strong>BikeControl</strong> from the list.
+          </li>
+          <li>
+            Shift up/down changes your virtual gear (or nudges ERG watts). Harder/easier, skip, pause/resume and select (start today's ride) also work.
+          </li>
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/** On-screen buttons for the simulated controller. */
+export function MockControllerPad() {
+  const controller = useGame((s) => s.controller);
+  if (!(controller instanceof MockController)) return null;
+  const buttons: [ControllerAction, string][] = [
+    ['shiftDown', '⬇ Shift'],
+    ['shiftUp', '⬆ Shift'],
+    ['easier', 'Easier'],
+    ['harder', 'Harder'],
+    ['skip', 'Skip'],
+    ['pause', 'Pause'],
+    ['resume', 'Resume'],
+    ['select', 'Select'],
+  ];
+  return (
+    <div className="card sim">
+      <div className="sim-title">🎮 Simulated controller</div>
+      <div className="sim-row">
+        {buttons.map(([a, label]) => (
+          <button key={a} className="btn small ghost" onClick={() => controller.press(a)}>
+            {label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

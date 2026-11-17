@@ -4,7 +4,7 @@ import { useGame } from '../store/gameStore';
 import { stepColor, WorkoutProfile } from './WorkoutProfile';
 
 export function ChallengeRunner() {
-  const { runSnap: snap, run, abortChallenge, sample, outcome, dismissOutcome } = useGame();
+  const { runSnap: snap, run, abortChallenge, sample, outcome, dismissOutcome, controllerAction } = useGame();
   if (!snap) return null;
   const challenge = run?.challenge ?? challengeById(snap.challengeId);
   if (!challenge) return null;
@@ -61,7 +61,38 @@ export function ChallengeRunner() {
         {snap.result && <div className={`verdict ${snap.result.passed ? 'pass' : 'fail'}`}>{snap.result.passed ? '✓ ' : '✗ '}{snap.result.reason}</div>}
       </div>
 
-      {snap.paused && <div className="paused-banner">⏸ Paused. Start pedalling to resume.</div>}
+      {snap.paused && (
+        <div className="paused-banner">
+          {snap.manualPause ? '⏸ Paused. Press resume (or P) to carry on.' : '⏸ Paused. Start pedalling to resume.'}
+        </div>
+      )}
+
+      {isWorkout && snap.status !== 'done' && (
+        <div className="workout-controls">
+          <button className="chip small" onClick={() => controllerAction('easier')} title="Easier: −5% ( [ key )">
+            − Easier
+          </button>
+          <span className="adj">
+            Intensity <strong>{snap.intensityPct}%</strong>
+            {snap.offsetW !== 0 && (
+              <>
+                {' '}
+                · {snap.offsetW > 0 ? '+' : ''}
+                {snap.offsetW} W
+              </>
+            )}
+          </span>
+          <button className="chip small" onClick={() => controllerAction('harder')} title="Harder: +5% ( ] key )">
+            Harder +
+          </button>
+          <button className="chip small" onClick={() => controllerAction('skip')} title="Skip to the next step (N key)">
+            ⏭ Skip
+          </button>
+          <button className="chip small" onClick={() => controllerAction(snap.manualPause ? 'resume' : 'pause')} title="Pause / resume (P key)">
+            {snap.manualPause ? '▶ Resume' : '⏸ Pause'}
+          </button>
+        </div>
+      )}
 
       {snap.crackSec > 0 && snap.status === 'running' && (
         <div className="crack-warn">Keep pedalling! Cracking in {Math.max(0, CRACK_SEC - snap.crackSec).toFixed(0)}s</div>

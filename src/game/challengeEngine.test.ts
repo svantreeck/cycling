@@ -264,3 +264,59 @@ describe('workouts', () => {
     for (let d = 1; d <= 60; d++) expect(dailyBounty(30, new Date(2026, 0, d))?.workout).toBeUndefined();
   });
 });
+
+describe('rider controls', () => {
+  const wk: Challenge = { ...simple, id: 'wk2', workout: { category: 'threshold', focus: 'Threshold', trains: ['threshold'], tss: 10, rung: 1, rungs: 1 } };
+  const start = (c: Challenge) => {
+    const run = new ChallengeRun(c, FTP);
+    run.start();
+    for (let sec = 0; sec <= 11; sec++) run.update({ t: sec * 1000, power: 100, cadence: 90, speedKph: 30 }); // into w1 (120% = 240 W)
+    return run;
+  };
+
+  it('harder/easier scales ERG targets in workouts', () => {
+    const run = start(wk);
+    expect(run.snapshot().targetWatts).toBe(240);
+    expect(run.adjustIntensity(5)).toEqual([{ type: 'erg', watts: 252 }]);
+    expect(run.snapshot().intensityPct).toBe(105);
+  });
+
+  it('shifting in ERG nudges the target by watts', () => {
+    const run = start(wk);
+    expect(run.nudgeWatts(5)).toEqual([{ type: 'erg', watts: 245 }]);
+    run.nudgeWatts(5);
+    expect(run.snapshot()).toMatchObject({ offsetW: 10, targetWatts: 250 });
+  });
+
+  it('skip jumps to the next step and can finish the workout', () => {
+    const run = start(wk);
+    expect(run.skip()).toEqual([{ type: 'erg', watts: 100 }]); // r1
+    expect(run.snapshot().step.label).toBe('r1');
+    run.skip(); // w2
+    run.skip(); // cd (last scored step done → passed)
+    expect(run.snapshot().result?.passed).toBe(true);
+    run.skip();
+    expect(run.done).toBe(true);
+  });
+
+  it('pause releases the trainer and stops the clock until resumed', () => {
+    const run = start(wk);
+    expect(run.setPaused(true)).toEqual([{ type: 'free' }]);
+    const before = run.snapshot().stepElapsedSec;
+    for (let sec = 12; sec <= 15; sec++) run.update({ t: sec * 1000, power: 0, cadence: 60, speedKph: 20 });
+    expect(run.snapshot()).toMatchObject({ manualPause: true, paused: true, targetWatts: null, stepElapsedSec: before });
+    expect(run.setPaused(false)).toEqual([{ type: 'erg', watts: 240 }]);
+    for (let sec = 16; sec <= 17; sec++) run.update({ t: sec * 1000, power: 240, cadence: 90, speedKph: 30 });
+    expect(run.snapshot().stepElapsedSec).toBe(before + 2);
+  });
+
+  it('challenges stay fixed: no adjustments, skips or pauses', () => {
+    const run = start(simple);
+    expect(run.adjustable).toBe(false);
+    expect(run.adjustIntensity(5)).toEqual([]);
+    expect(run.nudgeWatts(5)).toEqual([]);
+    expect(run.skip()).toEqual([]);
+    expect(run.setPaused(true)).toEqual([]);
+    expect(run.snapshot().targetWatts).toBe(240);
+  });
+});

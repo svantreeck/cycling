@@ -1,5 +1,6 @@
 import { tierFor } from '../game/avatarTiers';
 import { fmtDur } from '../game/challenges';
+import { GEAR_COUNT, gradeForGear } from '../game/gears';
 import { statGains, SYSTEM_INFO, SYSTEMS } from '../game/stats';
 import { ZONES, zoneFor } from '../game/zones';
 import { useEffect, useState } from 'react';
@@ -55,6 +56,8 @@ export function RideScreen() {
       </div>
 
       <ZoneBar power={power} ftp={profile.ftp} />
+
+      <GearControl />
 
       {runSnap && <ChallengeRunner />}
 
@@ -190,6 +193,36 @@ function ZoneBar({ power, ftp }: { power: number; ftp: number }) {
           <span className="zone-name">{zone.name}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Virtual gears for free riding. Hidden while ERG holds the watts (shifting nudges the target instead). */
+function GearControl() {
+  const { gear, run, runSnap, freeErg, conn, controllerAction, controllerConn } = useGame();
+  const ergHolds = run ? run.ergActive : freeErg.on;
+  if (conn !== 'connected' || ergHolds || runSnap?.status === 'done') return null;
+  return (
+    <div className="card gears">
+      <button className="btn" onClick={() => controllerAction('shiftDown')} disabled={gear <= 1} aria-label="Shift down">
+        −
+      </button>
+      <div className="gear-display">
+        <span className="muted small">Virtual gear</span>
+        <strong>{gear}</strong>
+        <div className="gear-ticks">
+          {Array.from({ length: GEAR_COUNT }, (_, i) => (
+            <span key={i} className={i < gear ? 'on' : ''} />
+          ))}
+        </div>
+      </div>
+      <button className="btn" onClick={() => controllerAction('shiftUp')} disabled={gear >= GEAR_COUNT} aria-label="Shift up">
+        +
+      </button>
+      <span className="muted small gear-hint">
+        {controllerConn === 'connected' ? 'Shift with your controller' : 'Shift with − / + keys'} · {gradeForGear(gear) >= 0 ? '+' : ''}
+        {gradeForGear(gear)}% grade
+      </span>
     </div>
   );
 }

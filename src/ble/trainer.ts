@@ -23,8 +23,11 @@ export interface Trainer {
   onDisconnect(cb: () => void): Unsubscribe;
   /** Hold the given wattage (ERG). No-op if unsupported. */
   setErgPower(watts: number): Promise<void>;
-  /** Release ERG: flat-road simulation so the rider controls effort with gears. */
-  setFreeRide(): Promise<void>;
+  /**
+   * Release ERG: road simulation so the rider controls effort with gears.
+   * `gradePct` is the simulated grade; virtual gears shift it (0 = flat road).
+   */
+  setFreeRide(gradePct?: number): Promise<void>;
 }
 
 /** Tiny typed event helper shared by trainer implementations. */

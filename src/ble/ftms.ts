@@ -134,11 +134,11 @@ export class BluetoothTrainer implements Trainer {
     }
   }
 
-  async setFreeRide(): Promise<void> {
+  async setFreeRide(gradePct = 0): Promise<void> {
     if (!this.capabilities.simulation) return;
     this.ergTarget = null;
     this.clearErgTimer();
-    await this.write(encodeSetSimulation({ gradePct: 0 }), 0x11);
+    await this.write(encodeSetSimulation({ gradePct }), 0x11);
   }
 
   // ---- internals ----------------------------------------------------------
