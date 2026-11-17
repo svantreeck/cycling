@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { isWebBluetoothAvailable } from '../ble/ftms';
 import { MockTrainer } from '../ble/mockTrainer';
-import { MockController, type ControllerAction } from '../ble/obc';
+import { MockController, type ControllerAction } from '../ble/controller';
 import { inspectDevice, ZwiftClickController } from '../ble/zwiftClick';
 import { BUTTON_LABEL } from '../ble/zwiftProtocol';
 import { useGame } from '../store/gameStore';
@@ -135,9 +135,9 @@ export function SimControls() {
   );
 }
 
-/** Connect a controller: a Zwift Click/Ride/Play directly, BikeControl (OpenBikeControl), or a simulated one. */
+/** Connect a controller: a Zwift Click/Ride/Play directly, or a simulated one. */
 export function ControllerPanel() {
-  const { controller, controllerConn, connectController, connectZwiftClick, connectMockController, disconnectController } = useGame();
+  const { controller, controllerConn, connectZwiftClick, connectMockController, disconnectController } = useGame();
   const bt = isWebBluetoothAvailable();
   const [help, setHelp] = useState(false);
 
@@ -165,9 +165,6 @@ export function ControllerPanel() {
       <button className="btn" disabled={!bt || controllerConn === 'connecting'} onClick={() => void connectZwiftClick()}>
         {controllerConn === 'connecting' ? 'Connecting…' : 'Connect Zwift Click'}
       </button>
-      <button className="btn ghost small" disabled={!bt || controllerConn === 'connecting'} onClick={() => void connectController()}>
-        BikeControl
-      </button>
       <button className="btn ghost small" onClick={() => void connectMockController()}>
         Simulated
       </button>
@@ -176,7 +173,6 @@ export function ControllerPanel() {
       </button>
       {help && (
         <div className="muted small controller-help">
-          <strong>Zwift Click (direct)</strong>
           <ol>
             <li>Close Zwift, BikeControl and any other app using the Click. A controller accepts only one connection.</li>
             <li>If your Clicks are paired to the trainer (KICKR bridge / virtual shifting), unpair them there first, or the browser won't see them.</li>
@@ -189,7 +185,6 @@ export function ControllerPanel() {
               day. Without that it may stop after about a minute (the app reconnects it automatically).
             </li>
           </ol>
-          <strong>BikeControl</strong>: run it on another device, choose "OpenBikeControl Compatible" and turn on Bluetooth, then click BikeControl here.
         </div>
       )}
     </div>

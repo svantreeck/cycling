@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ControllerAction } from './ble/obc';
+import type { ControllerAction } from './ble/controller';
 import { ChallengeBoard } from './components/ChallengeBoard';
 import { Avatar, type Mood } from './components/Avatar';
 import { trainingLoad, type TrainingLoad } from './game/coach';
@@ -22,7 +22,7 @@ const TABS: { id: Screen; label: string }[] = [
   { id: 'profile', label: 'Profile' },
 ];
 
-/** Keyboard shortcuts mirror the controller buttons (and work with BikeControl's keyboard mode). */
+/** Keyboard shortcuts mirror the controller buttons. */
 const KEY_ACTIONS: Record<string, ControllerAction> = {
   '=': 'shiftUp',
   '+': 'shiftUp',

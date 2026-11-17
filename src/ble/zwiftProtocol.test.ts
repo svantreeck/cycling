@@ -1,4 +1,4 @@
-import { BUTTON_ACTIONS } from './zwiftClick';
+import { BUTTON_ACTIONS, DEBOUNCE_MS, ZwiftClickController } from './zwiftClick';
 import { buttonsIn, handshake, handshakeReply, newlyPressed, parseZwiftFrame, protobufVarints, readVarint, ZWIFT_BTN } from './zwiftProtocol';
 
 /** Encode a varint the way protobuf does. */
@@ -73,5 +73,18 @@ describe('Zwift controller protocol', () => {
     expect(BUTTON_ACTIONS.shiftUpRight).toBe('shiftUp');
     expect(BUTTON_ACTIONS.shiftUpLeft).toBe('shiftDown');
     expect(BUTTON_ACTIONS.b).toBe('shiftDown');
+  });
+});
+
+describe('ZwiftClickController actions', () => {
+  it('debounces the same action within 100 ms but allows quick deliberate taps', () => {
+    const c = new ZwiftClickController();
+    const got: string[] = [];
+    c.onAction((a) => got.push(a));
+    c.emitAction('shiftUp', 1000);
+    c.emitAction('shiftUp', 1040); // bounce / duplicate
+    c.emitAction('shiftDown', 1050); // different action is not blocked
+    c.emitAction('shiftUp', 1000 + DEBOUNCE_MS + 50); // a second, real tap
+    expect(got).toEqual(['shiftUp', 'shiftDown', 'shiftUp']);
   });
 });

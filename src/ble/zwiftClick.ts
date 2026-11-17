@@ -1,4 +1,4 @@
-import type { ControllerAction, Controller, HapticPattern } from './obc';
+import type { ControllerAction, Controller } from './controller';
 import { Emitter } from './trainer';
 import {
   BUTTON_LABEL,
@@ -19,7 +19,7 @@ import {
 } from './zwiftProtocol';
 
 /**
- * Direct Web Bluetooth support for Zwift Click (v1 and v2) and Zwift Ride/Play controllers. No BikeControl needed.
+ * Direct Web Bluetooth support for Zwift Click (v1 and v2) and Zwift Ride/Play controllers.
  * A Click v2 is two devices (left "−" pod, right "+" pod); each is added with its own Bluetooth prompt.
  *
  * The right side never needs Zwift's unlock. The left side locks (stops sending after about a minute) unless the
@@ -63,6 +63,8 @@ export interface LogLine {
 }
 
 const KEEPALIVE_MS = 3000;
+/** Same action twice within this window is treated as one press. Fast deliberate taps are ~150 ms+ apart. */
+export const DEBOUNCE_MS = 100;
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000];
 const LOG_MAX = 300;
 
@@ -75,6 +77,10 @@ class Pod {
   private pressed = 0;
   private intentional = false;
   private reconnectAttempt = 0;
+  // Stable handler references: adding the same listener twice is a no-op, so reconnecting (or picking an
+  // already-connected side again) can't stack listeners and fire every press twice.
+  private readonly handleAsync = (e: Event) => this.onAsync(bytesOf(e));
+  private readonly handleSyncTx = (e: Event) => this.onSyncTx(bytesOf(e));
 
   constructor(
     readonly device: BluetoothDevice,
@@ -110,8 +116,8 @@ class Pod {
     const txChar = await service.getCharacteristic(ZWIFT_SYNC_TX);
     this.rx = await service.getCharacteristic(ZWIFT_SYNC_RX);
 
-    asyncChar.addEventListener('characteristicvaluechanged', (e) => this.onAsync(bytesOf(e)));
-    txChar.addEventListener('characteristicvaluechanged', (e) => this.onSyncTx(bytesOf(e)));
+    asyncChar.addEventListener('characteristicvaluechanged', this.handleAsync);
+    txChar.addEventListener('characteristicvaluechanged', this.handleSyncTx);
     await asyncChar.startNotifications();
     await txChar.startNotifications();
 
@@ -170,10 +176,14 @@ class Pod {
         // Learn which side this pod is from the buttons it sends.
         if (this.info.side === 'unknown') this.set({ side: fresh & LEFT_BITS ? 'left' : 'right' });
         this.set({ lastButtonAt: Date.now() });
+        // One action per frame, even if a press sets two bits that map to the same action.
+        const actions = new Set<ControllerAction>();
         for (const b of buttonsIn(fresh)) {
           const action = BUTTON_ACTIONS[b];
           this.owner.emitButton(b, action);
+          if (action) actions.add(action);
         }
+        for (const a of actions) this.owner.emitAction(a);
       }
       return;
     }
@@ -247,6 +257,10 @@ export class ZwiftClickController implements Controller {
       optionalServices: [ZWIFT_RIDE_SERVICE, ZWIFT_CUSTOM_SERVICE],
     });
     let pod = this.pods.find((p) => p.device.id === device.id);
+    if (pod?.info.state === 'connected') {
+      this.addLog({ at: Date.now(), pod: pod.label(), dir: 'info', text: 'already connected (pick the other side to add it)' });
+      return;
+    }
     if (!pod) {
       pod = new Pod(device, this);
       this.pods.push(pod);
@@ -296,13 +310,20 @@ export class ZwiftClickController implements Controller {
     return this.buttons.on(cb);
   }
 
-  // The Click v2 can't vibrate; Ride/Play can, but their vibration command is not implemented yet.
-  async haptic(_pattern: HapticPattern): Promise<void> {}
 
-  /** @internal */
+  private lastActionAt = new Map<ControllerAction, number>();
+
+  /** @internal Report a press to the button tester. */
   emitButton(button: ZwiftButton, action?: ControllerAction) {
     this.buttons.emit({ button, action });
-    if (action) this.actions.emit(action);
+  }
+
+  /** @internal Fire an action, ignoring repeats of the same action within DEBOUNCE_MS (switch bounce). */
+  emitAction(action: ControllerAction, now = Date.now()) {
+    const last = this.lastActionAt.get(action);
+    if (last != null && now - last < DEBOUNCE_MS) return;
+    this.lastActionAt.set(action, now);
+    this.actions.emit(action);
   }
   /** @internal */
   addLog(line: LogLine) {

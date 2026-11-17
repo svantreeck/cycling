@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { BluetoothTrainer } from '../ble/ftms';
 import { MockTrainer } from '../ble/mockTrainer';
-import { MockController, ObcController, type Controller, type ControllerAction } from '../ble/obc';
+import { MockController, type Controller, type ControllerAction } from '../ble/controller';
 import { ZwiftClickController } from '../ble/zwiftClick';
 import type { Trainer, TrainerSample, Unsubscribe } from '../ble/trainer';
 import { tiersReached, type AvatarTier } from '../game/avatarTiers';
@@ -87,7 +87,7 @@ interface GameState {
   outcome: RunOutcome | null;
   celebrations: Celebration[];
   freeErg: FreeErg;
-  /** BikeControl / OpenBikeControl controller */
+  /** handlebar controller (Zwift Click, or the simulated one) */
   controller: Controller | null;
   controllerConn: ConnStatus;
   /** virtual gear for free riding (1…GEAR_COUNT) */
@@ -119,7 +119,6 @@ interface GameState {
   exportJson(): string;
   resetProfile(): void;
   clearError(): void;
-  connectController(): Promise<void>;
   connectMockController(): Promise<void>;
   /** Connect a Zwift Click/Ride/Play directly. If one is already connected, adds another side. */
   connectZwiftClick(): Promise<void>;
@@ -128,9 +127,6 @@ interface GameState {
   controllerAction(a: ControllerAction): void;
   setTodayPick(pick: { suggestionId: string; workoutId: string } | null): void;
 }
-
-/** Reported to controllers in OpenBikeControl App Information. */
-const APP_VERSION = '1.0.0';
 
 export const localDate = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -271,12 +267,7 @@ export const useGame = create<GameState>((set, get) => {
 
     const run = get().run;
     if (run) {
-      const before = run.snapshot();
       sendCommands(run.update(sample));
-      const after = run.snapshot();
-      // Haptic cues on the controller: a tap at each new step, a celebration when a workout is done.
-      if (after.stepIndex !== before.stepIndex) void get().controller?.haptic(after.step.kind === 'work' || after.step.kind === 'effort' ? 'double' : 'single');
-      if (after.result?.passed && !before.result) void get().controller?.haptic('success');
       if (run.done) finalizeRun(run);
       else set({ runSnap: run.snapshot() });
     }
@@ -536,7 +527,6 @@ export const useGame = create<GameState>((set, get) => {
 
     clearError: () => set({ error: null }),
 
-    connectController: () => attachController(new ObcController(APP_VERSION)),
     connectMockController: () => attachController(new MockController()),
 
     connectZwiftClick: async () => {
