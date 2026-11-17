@@ -1,6 +1,6 @@
 import { tierFor } from '../game/avatarTiers';
 import { fmtDur } from '../game/challenges';
-import { GEAR_COUNT, gradeForGear } from '../game/gears';
+import { GEAR_COUNT } from '../game/gears';
 import { statGains, SYSTEM_INFO, SYSTEMS } from '../game/stats';
 import { ZONES, zoneFor } from '../game/zones';
 import { useEffect, useState } from 'react';
@@ -13,7 +13,8 @@ import { RideExport } from './RideExport';
 import { XPBar } from './XPBar';
 
 export function RideScreen() {
-  const { sample, ride, profile, startRide, endRide, runSnap, run, conn, lastRide, setScreen, updateProfile, freeErg, hrm, hrmConn, heartRate } = useGame();
+  const { sample, ride, profile, startRide, endRide, runSnap, run, conn, lastRide, setScreen, updateProfile, freeErg, hrm, hrmConn, heartRate, virtualKph, gear } = useGame();
+  const speedKph = virtualKph ?? sample?.speedKph ?? 0;
   const unit = profile.settings.speedUnit;
   const toggleUnit = () => updateProfile({ settings: { ...profile.settings, speedUnit: unit === 'kmh' ? 'mph' : 'kmh' } });
   const power = sample?.power ?? 0;
@@ -29,7 +30,7 @@ export function RideScreen() {
           level={profile.levels.level}
           kitColor={profile.cosmetics.kitColor}
           cadence={sample?.cadence ?? 0}
-          speedKph={sample?.speedKph ?? 0}
+          speedKph={speedKph}
           width={420}
         />
         <div className="ride-title">{tierFor(profile.levels.level).title}</div>
@@ -66,8 +67,9 @@ export function RideScreen() {
         <Metric label="Cadence" value={Math.round(sample?.cadence ?? 0)} unit="rpm" />
         <Metric
           label="Speed"
-          value={convertSpeed(sample?.speedKph ?? 0, unit).toFixed(1)}
+          value={convertSpeed(speedKph, unit).toFixed(1)}
           unit={speedLabel(unit)}
+          sub={virtualKph != null ? `gear ${gear}` : undefined}
           onClick={toggleUnit}
           title={`Tap to switch to ${unit === 'kmh' ? 'mph' : 'km/h'}`}
         />
@@ -228,7 +230,6 @@ function ZoneBar({ power, ftp }: { power: number; ftp: number }) {
 /** Virtual gear shifter (− / gear / +), used in Sim mode and in workout steps that aren't under ERG. */
 function GearShifter() {
   const { gear, controllerAction, controllerConn } = useGame();
-  const grade = gradeForGear(gear);
   return (
     <div className="gears">
       <button className="btn" onClick={() => controllerAction('shiftDown')} disabled={gear <= 1} aria-label="Shift down">
@@ -247,8 +248,7 @@ function GearShifter() {
         +
       </button>
       <span className="muted small gear-hint">
-        {controllerConn === 'connected' ? 'Shift with your controller' : 'Shift with the − / + keys'} ·{' '}
-        {grade === 0 ? 'flat road' : `${grade > 0 ? '+' : ''}${grade}% grade`}
+        {controllerConn === 'connected' ? 'Shift with your controller' : 'Shift with the − / + keys'}
       </span>
     </div>
   );

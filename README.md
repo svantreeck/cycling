@@ -18,7 +18,7 @@ or a subscription.
   FTP ramp test. Passing it promotes you to the next rank.
 - **Over 40 structured workouts:** Zone 2, tempo, sweet spot, threshold, VO₂max, anaerobic and sprint sessions, plus
   pass/fail challenges. The trainer holds the target watts (ERG mode). Workouts adapt to how hard you say they felt.
-- **Free ride with virtual gears:** 24 virtual gears that change the simulated grade. Shift them with a Zwift Click or
+- **Free ride with virtual gears:** 24 virtual gears that behave like a real cassette. Each shift changes how far a pedal stroke takes you, and the speed shown follows. Shift them with a Zwift Click or
   the keyboard.
 - **Heart rate:** pair a Bluetooth heart-rate monitor to see it live during rides. Average and max appear in the ride
   summary, and heart rate is included in exported rides.

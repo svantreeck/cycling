@@ -22,7 +22,7 @@ import { tiersReached, type AvatarTier } from '../game/avatarTiers';
 import { ChallengeRun, type RunResult, type RunSnapshot, type TrainerCommand } from '../game/challengeEngine';
 import { challengeById, RAMP_TEST, roman, type Challenge, type FitnessSystem } from '../game/challenges';
 import { blockInfo, isPromoted, suggestToday, type Feel } from '../game/coach';
-import { clampGear, DEFAULT_GEAR, gradeForGear } from '../game/gears';
+import { clampGear, DEFAULT_GEAR, gradeForGear, virtualSpeedKph } from '../game/gears';
 import { challengeReward, promotionXp } from '../game/rewards';
 import { addStats, statGains, statLevel, SYSTEMS } from '../game/stats';
 import { addXp, rideXp, type AddXpResult } from '../game/xp';
@@ -127,6 +127,8 @@ interface GameState {
   hrmConn: 'disconnected' | HrState;
   /** latest heart rate in bpm; null when none has arrived for a few seconds */
   heartRate: number | null;
+  /** road speed in the current virtual gear while free riding (sim mode); null in ERG */
+  virtualKph: number | null;
 
   setScreen(s: Screen): void;
   /** Connect a Bluetooth trainer. With `name`, the picker lists only that device (one-tap reconnect). */
@@ -192,6 +194,12 @@ let track = new TrackRecorder();
 /** a reading older than this is treated as no heart rate (strap off, or out of range) */
 const HR_STALE_MS = 5000;
 let lastHrAt = 0;
+/** what the trainer was last told: ERG target or free ride (sim grade), and when the grade was last sent */
+let trainerMode: 'erg' | 'free' = 'free';
+let lastGrade: number | null = null;
+let lastGradeAt = 0;
+/** re-send the gear's grade at most this often as speed changes */
+const GRADE_REFRESH_MS = 1000;
 
 export const useGame = create<GameState>((set, get) => {
   const persist = (profile: Profile) => {
@@ -203,10 +211,27 @@ export const useGame = create<GameState>((set, get) => {
     const t = get().trainer;
     if (!t) return;
     for (const c of cmds) {
-      // Free riding uses the current virtual gear's grade.
-      const p = c.type === 'erg' ? t.setErgPower(c.watts) : t.setFreeRide(gradeForGear(get().gear));
-      p.catch((e) => console.warn('Trainer command failed', c, e));
+      trainerMode = c.type;
+      if (c.type === 'erg') {
+        t.setErgPower(c.watts).catch((e) => console.warn('Trainer command failed', c, e));
+        set({ virtualKph: null });
+      } else sendGrade(true);
     }
+  };
+
+  /**
+   * Free ride: send the grade that makes the trainer feel like the current virtual gear at the current speed.
+   * Called on shifts (`force`) and on every sample, throttled, since the right grade changes with speed.
+   */
+  const sendGrade = (force = false) => {
+    const { trainer: t, sample, gear } = get();
+    if (!t || trainerMode !== 'free') return;
+    const grade = gradeForGear(gear, sample?.speedKph ?? 0);
+    const now = Date.now();
+    if (!force && (grade === lastGrade || now - lastGradeAt < GRADE_REFRESH_MS)) return;
+    lastGrade = grade;
+    lastGradeAt = now;
+    t.setFreeRide(grade).catch((e) => console.warn('Trainer command failed', 'free', e));
   };
 
   /** Fold an addXp result into state, queueing level-up celebrations. */
@@ -292,6 +317,10 @@ export const useGame = create<GameState>((set, get) => {
     const state = get();
     let { profile, ride } = state;
 
+    // In a virtual gear the road speed differs from the trainer's (fixed-gear) speed.
+    const virtualKph = trainerMode === 'free' && state.trainer?.capabilities.simulation ? virtualSpeedKph(sample.speedKph, state.gear) : null;
+    const roadSample = virtualKph != null ? { ...sample, speedKph: virtualKph } : sample;
+
     if (ride) {
       const dt = ride.lastT == null ? 0 : Math.min(Math.max(0, sample.t - ride.lastT), MAX_DT_MS);
       const idle = sample.power <= 0 && sample.cadence <= 0;
@@ -299,7 +328,7 @@ export const useGame = create<GameState>((set, get) => {
       const paused = idleMs >= IDLE_PAUSE_MS;
       ride = { ...ride, lastT: sample.t, idleMs, paused };
       const hr = state.heartRate;
-      track.add(sample, dt, !paused && dt > 0, hr);
+      track.add(roadSample, dt, !paused && dt > 0, hr);
       if (!paused && dt > 0 && hr) {
         ride = { ...ride, hrBeats: ride.hrBeats + hr * (dt / 1000), hrSec: ride.hrSec + dt / 1000, maxHr: Math.max(ride.maxHr, hr) };
       }
@@ -321,7 +350,7 @@ export const useGame = create<GameState>((set, get) => {
       }
     }
 
-    set({ sample, ride, profile, ...(state.heartRate != null && Date.now() - lastHrAt > HR_STALE_MS ? { heartRate: null } : {}) });
+    set({ sample, ride, profile, virtualKph, ...(state.heartRate != null && Date.now() - lastHrAt > HR_STALE_MS ? { heartRate: null } : {}) });
 
     const run = get().run;
     if (run) {
@@ -329,6 +358,7 @@ export const useGame = create<GameState>((set, get) => {
       if (run.done) finalizeRun(run);
       else set({ runSnap: run.snapshot() });
     }
+    sendGrade();
 
     if (Date.now() - lastSave > AUTOSAVE_MS) persist(get().profile);
   };
@@ -442,6 +472,7 @@ export const useGame = create<GameState>((set, get) => {
     hrm: null,
     hrmConn: 'disconnected',
     heartRate: null,
+    virtualKph: null,
 
     setScreen: (screen) => set({ screen }),
 
