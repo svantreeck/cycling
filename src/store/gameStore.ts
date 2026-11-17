@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { BluetoothTrainer } from '../ble/ftms';
 import { MockTrainer } from '../ble/mockTrainer';
 import { MockController, ObcController, type Controller, type ControllerAction } from '../ble/obc';
+import { ZwiftClickController } from '../ble/zwiftClick';
 import type { Trainer, TrainerSample, Unsubscribe } from '../ble/trainer';
 import { tiersReached, type AvatarTier } from '../game/avatarTiers';
 import { ChallengeRun, type RunResult, type RunSnapshot, type TrainerCommand } from '../game/challengeEngine';
@@ -95,6 +96,8 @@ interface GameState {
   toast: { text: string; id: number } | null;
   /** a swap chosen on the Today card, valid while the suggestion it replaced is still current */
   todayPick: { suggestionId: string; workoutId: string } | null;
+  /** bumps when the controller's own state changes (pods, battery, log) so panels re-render */
+  controllerRev: number;
 
   setScreen(s: Screen): void;
   connectBluetooth(): Promise<void>;
@@ -118,6 +121,8 @@ interface GameState {
   clearError(): void;
   connectController(): Promise<void>;
   connectMockController(): Promise<void>;
+  /** Connect a Zwift Click/Ride/Play directly. If one is already connected, adds another side. */
+  connectZwiftClick(): Promise<void>;
   disconnectController(): Promise<void>;
   /** Handle a controller button (or keyboard shortcut). */
   controllerAction(a: ControllerAction): void;
@@ -312,6 +317,7 @@ export const useGame = create<GameState>((set, get) => {
   const attachController = async (c: Controller) => {
     controllerUnsubs.forEach((u) => u());
     controllerUnsubs = [c.onAction((a) => get().controllerAction(a)), c.onDisconnect(() => set({ controllerConn: 'lost' }))];
+    if (c instanceof ZwiftClickController) controllerUnsubs.push(c.onChange(() => set((s) => ({ controllerRev: s.controllerRev + 1 }))));
     set({ controller: c, controllerConn: 'connecting', error: null });
     try {
       await c.connect();
@@ -345,6 +351,7 @@ export const useGame = create<GameState>((set, get) => {
     gear: DEFAULT_GEAR,
     toast: null,
     todayPick: null,
+    controllerRev: 0,
 
     setScreen: (screen) => set({ screen }),
 
@@ -531,6 +538,20 @@ export const useGame = create<GameState>((set, get) => {
 
     connectController: () => attachController(new ObcController(APP_VERSION)),
     connectMockController: () => attachController(new MockController()),
+
+    connectZwiftClick: async () => {
+      const c = get().controller;
+      if (c instanceof ZwiftClickController && get().controllerConn === 'connected') {
+        try {
+          await c.connect(); // add the other side
+          toast('Zwift controller added');
+        } catch (e) {
+          set({ error: errorMessage(e) });
+        }
+        return;
+      }
+      await attachController(new ZwiftClickController());
+    },
 
     disconnectController: async () => {
       const c = get().controller;

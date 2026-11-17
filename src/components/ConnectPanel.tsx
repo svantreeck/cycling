@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { isWebBluetoothAvailable } from '../ble/ftms';
 import { MockTrainer } from '../ble/mockTrainer';
 import { MockController, type ControllerAction } from '../ble/obc';
+import { inspectDevice, ZwiftClickController } from '../ble/zwiftClick';
+import { BUTTON_LABEL } from '../ble/zwiftProtocol';
 import { useGame } from '../store/gameStore';
 
 export function ConnectionChip() {
@@ -133,11 +135,13 @@ export function SimControls() {
   );
 }
 
-/** Connect a BikeControl / OpenBikeControl controller (e.g. Zwift Click via BikeControl on your phone). */
+/** Connect a controller: a Zwift Click/Ride/Play directly, BikeControl (OpenBikeControl), or a simulated one. */
 export function ControllerPanel() {
-  const { controller, controllerConn, connectController, connectMockController, disconnectController } = useGame();
+  const { controller, controllerConn, connectController, connectZwiftClick, connectMockController, disconnectController } = useGame();
   const bt = isWebBluetoothAvailable();
   const [help, setHelp] = useState(false);
+
+  if (controller instanceof ZwiftClickController && controllerConn === 'connected') return <ZwiftClickPanel click={controller} />;
 
   if (controller && controllerConn === 'connected') {
     return (
@@ -156,12 +160,13 @@ export function ControllerPanel() {
     <div className="card connect controller">
       <div>
         🎮 <strong>Controller</strong>{' '}
-        <span className="muted small">
-          {controllerConn === 'lost' ? 'Connection lost.' : 'Shift gears and control workouts with a Zwift Click, Ride or Play via BikeControl.'}
-        </span>
+        <span className="muted small">{controllerConn === 'lost' ? 'Connection lost.' : 'Shift gears and control workouts from your handlebars.'}</span>
       </div>
-      <button className="btn" disabled={!bt || controllerConn === 'connecting'} onClick={() => void connectController()}>
-        {controllerConn === 'connecting' ? 'Connecting…' : controllerConn === 'lost' ? 'Reconnect BikeControl' : 'Connect BikeControl'}
+      <button className="btn" disabled={!bt || controllerConn === 'connecting'} onClick={() => void connectZwiftClick()}>
+        {controllerConn === 'connecting' ? 'Connecting…' : 'Connect Zwift Click'}
+      </button>
+      <button className="btn ghost small" disabled={!bt || controllerConn === 'connecting'} onClick={() => void connectController()}>
+        BikeControl
       </button>
       <button className="btn ghost small" onClick={() => void connectMockController()}>
         Simulated
@@ -170,19 +175,117 @@ export function ControllerPanel() {
         {help ? 'Hide setup' : 'How to set up'}
       </button>
       {help && (
-        <ol className="muted small controller-help">
-          <li>Install BikeControl on your phone or tablet (it must be a different device from this computer) and pair your Zwift Click, Ride or Play in it.</li>
-          <li>
-            In BikeControl, choose <strong>OpenBikeControl Compatible</strong> as your trainer app and turn on its <strong>Bluetooth</strong> connection.
-          </li>
-          <li>
-            Click <strong>Connect BikeControl</strong> here and pick <strong>BikeControl</strong> from the list.
-          </li>
-          <li>
-            Shift up/down changes your virtual gear (or nudges ERG watts). Harder/easier, skip, pause/resume and select (start today's ride) also work.
-          </li>
-        </ol>
+        <div className="muted small controller-help">
+          <strong>Zwift Click (direct)</strong>
+          <ol>
+            <li>Close Zwift, BikeControl and any other app using the Click. A controller accepts only one connection.</li>
+            <li>If your Clicks are paired to the trainer (KICKR bridge / virtual shifting), unpair them there first, or the browser won't see them.</li>
+            <li>
+              Press a button on the <strong>right</strong> (+) side to wake it, click <strong>Connect Zwift Click</strong> and pick it. Then use{' '}
+              <strong>Add other side</strong> for the left (−) side.
+            </li>
+            <li>
+              The right side always works: <strong>+</strong> shifts up, <strong>B</strong> shifts down. The left side needs the Zwift app to unlock it about once a
+              day. Without that it may stop after about a minute (the app reconnects it automatically).
+            </li>
+          </ol>
+          <strong>BikeControl</strong>: run it on another device, choose "OpenBikeControl Compatible" and turn on Bluetooth, then click BikeControl here.
+        </div>
       )}
+    </div>
+  );
+}
+
+const ACTION_LABEL: Record<ControllerAction, string> = {
+  shiftUp: 'shift up',
+  shiftDown: 'shift down',
+  harder: 'harder',
+  easier: 'easier',
+  skip: 'skip',
+  pause: 'pause',
+  resume: 'resume',
+  select: 'select',
+};
+
+/** Status, button tester and diagnostics for directly connected Zwift controllers. */
+function ZwiftClickPanel({ click }: { click: ZwiftClickController }) {
+  useGame((s) => s.controllerRev); // re-render on pod/log changes
+  const { connectZwiftClick, disconnectController } = useGame();
+  const [lastPress, setLastPress] = useState<string | null>(null);
+  const [showLog, setShowLog] = useState(false);
+  const [inspectLog, setInspectLog] = useState<string[]>([]);
+
+  useEffect(
+    () =>
+      click.onButton(({ button, action }) => {
+        setLastPress(`${BUTTON_LABEL[button]} → ${action ? ACTION_LABEL[action] : 'no action'}`);
+      }),
+    [click],
+  );
+
+  const pods = click.podInfo;
+  const hasLeft = pods.some((p) => p.side === 'left');
+  const lines = [...click.log.map((l) => `${new Date(l.at).toLocaleTimeString()} ${l.pod} ${l.dir === 'in' ? '←' : l.dir === 'out' ? '→' : '·'} ${l.text}`), ...inspectLog];
+  const copy = () => void navigator.clipboard.writeText(lines.join('\n'));
+  const inspect = (sendRideOn: boolean) =>
+    void inspectDevice((t) => setInspectLog((l) => [...l.slice(-199), `${new Date().toLocaleTimeString()} inspect · ${t}`]), sendRideOn).catch((e) =>
+      setInspectLog((l) => [...l, `inspect failed: ${(e as Error).message}`]),
+    );
+
+  return (
+    <div className="card connect controller zwift">
+      <div className="zwift-head">
+        🎮 <strong>Zwift controller</strong>
+        <button className="btn small" onClick={() => void connectZwiftClick()}>
+          {pods.length < 2 ? 'Add other side' : 'Add another'}
+        </button>
+        <button className="btn ghost small" onClick={() => void disconnectController()}>
+          Disconnect
+        </button>
+      </div>
+      <div className="pods">
+        {pods.map((p) => (
+          <div key={p.id} className={`pod state-${p.state}`}>
+            <span className="dot" />
+            <strong>{p.name}</strong>
+            <span className="muted small">
+              {p.side !== 'unknown' ? `${p.side} side` : 'press a button to identify'} · {p.state}
+              {p.lock === 'locked' && ' · 🔒 locked (needs Zwift unlock)'}
+              {p.lock === 'unlocked' && ' · unlocked'}
+              {p.battery != null && ` · 🔋${p.battery}%`}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="small">
+        {lastPress ? (
+          <>
+            Last press: <strong>{lastPress}</strong>
+          </>
+        ) : (
+          <span className="muted">Press a button to test it.</span>
+        )}
+        {!hasLeft && <span className="muted"> · Right side only: + shifts up, B shifts down.</span>}
+      </div>
+      <div className="row">
+        <button className="link small" onClick={() => setShowLog((v) => !v)}>
+          {showLog ? 'Hide' : 'Show'} Bluetooth log ({lines.length})
+        </button>
+        {showLog && (
+          <>
+            <button className="btn ghost small" onClick={copy}>
+              Copy log
+            </button>
+            <button className="btn ghost small" onClick={() => inspect(false)} title="Connect to any device (e.g. your KICKR) and log its services and Zwift notifications">
+              Inspect a device…
+            </button>
+            <button className="btn ghost small" onClick={() => inspect(true)} title="Same, and send the Zwift RideOn handshake">
+              Inspect + RideOn…
+            </button>
+          </>
+        )}
+      </div>
+      {showLog && <pre className="ble-log">{lines.slice(-80).join('\n') || 'Nothing yet.'}</pre>}
     </div>
   );
 }
