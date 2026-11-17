@@ -22,45 +22,11 @@ export function ConnectionChip() {
   );
 }
 
+/** One "Devices" card: a Trainer slot and a Virtual shifters slot, each showing its connect buttons or what's connected. */
 export function ConnectPanel() {
-  const { conn, trainer, connectBluetooth, connectMock, disconnect, reconnect } = useGame();
   const bt = isWebBluetoothAvailable();
-
-  if (conn === 'connected' && trainer) {
-    return (
-      <div className="card connect">
-        <div>
-          <strong>{trainer.name}</strong>{' '}
-          <span className="muted">
-            {trainer.kind === 'mock' ? 'simulator' : trainer.kind === 'ftms' ? 'FTMS' : 'Cycling Power (read-only)'}
-            {trainer.capabilities.erg ? ' · ERG ready' : ' · no ERG'}
-          </span>
-        </div>
-        <button className="btn ghost" onClick={() => void disconnect()}>
-          Disconnect
-        </button>
-      </div>
-    );
-  }
-
-  if (conn === 'lost') {
-    return (
-      <div className="card connect warn">
-        <div>
-          <strong>Trainer disconnected.</strong> Your challenge is paused.
-        </div>
-        <button className="btn primary" onClick={() => void reconnect()}>
-          Reconnect
-        </button>
-        <button className="btn ghost" onClick={() => void disconnect()}>
-          Give up
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="card connect">
+    <div className="card devices">
       {!bt && (
         <div className="banner">
           {isIOS() ? (
@@ -76,16 +42,66 @@ export function ConnectPanel() {
           )}
         </div>
       )}
-      <button className="btn primary" disabled={!bt || conn === 'connecting'} onClick={() => void connectBluetooth()}>
-        {conn === 'connecting' ? 'Connecting…' : 'Connect trainer'}
-      </button>
-      <button className="btn" disabled={conn === 'connecting'} onClick={() => void connectMock()}>
-        Use simulator
-      </button>
-      <p className="muted small">
-        Close Zwift, the Wahoo app and any other app connected to the trainer. Only one app can control it at a time.
-      </p>
+      <div className="device-grid">
+        <TrainerSlot />
+        <ShifterSlot />
+      </div>
     </div>
+  );
+}
+
+function TrainerSlot() {
+  const { conn, trainer, connectBluetooth, connectMock, disconnect, reconnect } = useGame();
+  const bt = isWebBluetoothAvailable();
+  const connected = conn === 'connected' && trainer;
+  return (
+    <section className={`device-slot ${conn === 'lost' ? 'warn' : ''}`}>
+      <h4>
+        🚴 Trainer <span className={`slot-dot conn-${conn}`}><span className="dot" /></span>
+      </h4>
+      {connected ? (
+        <>
+          <div className="device-row">
+            <div>
+              <strong>{trainer.name}</strong>
+              <div className="muted small">
+                {trainer.kind === 'mock' ? 'Simulator' : trainer.kind === 'ftms' ? 'Smart trainer (FTMS)' : 'Power only (read-only)'}
+                {trainer.capabilities.erg ? ' · ERG ready' : ' · no ERG'}
+              </div>
+            </div>
+            <button className="btn ghost small" onClick={() => void disconnect()}>
+              Disconnect
+            </button>
+          </div>
+        </>
+      ) : conn === 'lost' ? (
+        <>
+          <div className="small">
+            <strong>{trainer?.name ?? 'Trainer'} disconnected.</strong> Your ride is paused.
+          </div>
+          <div className="row">
+            <button className="btn primary" onClick={() => void reconnect()}>
+              Reconnect
+            </button>
+            <button className="btn ghost" onClick={() => void disconnect()}>
+              Give up
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="row">
+            <button className="btn primary" disabled={!bt || conn === 'connecting'} onClick={() => void connectBluetooth()}>
+              {conn === 'connecting' ? 'Connecting…' : 'Connect trainer'}
+            </button>
+            <button className="btn ghost" disabled={conn === 'connecting'} onClick={() => void connectMock()}>
+              Simulator
+            </button>
+          </div>
+          <p className="muted small">Close Zwift, the Wahoo app and any other app using the trainer. Only one app can control it at a time.</p>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -149,59 +165,71 @@ export function SimControls() {
   );
 }
 
-/** Connect a controller: a Zwift Click/Ride/Play directly, or a simulated one. */
-export function ControllerPanel() {
+/** Virtual shifters: a Zwift Click/Ride/Play connected directly, or a simulated one. */
+function ShifterSlot() {
   const { controller, controllerConn, connectZwiftClick, connectMockController, disconnectController } = useGame();
   const bt = isWebBluetoothAvailable();
   const [help, setHelp] = useState(false);
+  const connected = !!controller && controllerConn === 'connected';
 
-  if (controller instanceof ZwiftClickController && controllerConn === 'connected') return <ZwiftClickPanel click={controller} />;
-
-  if (controller && controllerConn === 'connected') {
-    return (
-      <div className="card connect controller">
+  let body;
+  if (connected && controller instanceof ZwiftClickController) body = <ZwiftClickPanel click={controller} />;
+  else if (connected) {
+    body = (
+      <div className="device-row">
         <div>
-          🎮 <strong>{controller.name}</strong> <span className="muted">· controller connected</span>
+          <strong>{controller.name}</strong>
+          <div className="muted small">Use the on-screen controller pad, or the − / + keys.</div>
         </div>
-        <button className="btn ghost" onClick={() => void disconnectController()}>
+        <button className="btn ghost small" onClick={() => void disconnectController()}>
           Disconnect
         </button>
       </div>
     );
+  } else {
+    body = (
+      <>
+        <div className="row">
+          <button className="btn primary" disabled={!bt || controllerConn === 'connecting'} onClick={() => void connectZwiftClick()}>
+            {controllerConn === 'connecting' ? 'Connecting…' : 'Connect Zwift Click'}
+          </button>
+          <button className="btn ghost" onClick={() => void connectMockController()}>
+            Simulated
+          </button>
+        </div>
+        <p className="muted small">
+          {controllerConn === 'lost' ? 'Connection lost. ' : 'Optional: shift gears and control workouts from your handlebars. '}
+          <button className="link" onClick={() => setHelp((h) => !h)}>
+            {help ? 'Hide setup' : 'How to set up'}
+          </button>
+        </p>
+        {help && (
+          <div className="muted small controller-help">
+            <ol>
+              <li>Close Zwift, BikeControl and any other app using the Click. A controller accepts only one connection.</li>
+              <li>If your Clicks are paired to the trainer (KICKR bridge / virtual shifting), unpair them there first, or the browser won't see them.</li>
+              <li>
+                Press a button on the <strong>right</strong> (+) side to wake it, click <strong>Connect Zwift Click</strong> and pick it. Then use{' '}
+                <strong>Add other side</strong> for the left (−) side.
+              </li>
+              <li>
+                The right side always works: <strong>+</strong> shifts up, <strong>B</strong> shifts down. The left side needs the Zwift app to unlock it about once a
+                day. Without that it may stop after about a minute (the app reconnects it automatically).
+              </li>
+            </ol>
+          </div>
+        )}
+      </>
+    );
   }
 
   return (
-    <div className="card connect controller">
-      <div>
-        🎮 <strong>Controller</strong>{' '}
-        <span className="muted small">{controllerConn === 'lost' ? 'Connection lost.' : 'Shift gears and control workouts from your handlebars.'}</span>
-      </div>
-      <button className="btn" disabled={!bt || controllerConn === 'connecting'} onClick={() => void connectZwiftClick()}>
-        {controllerConn === 'connecting' ? 'Connecting…' : 'Connect Zwift Click'}
-      </button>
-      <button className="btn ghost small" onClick={() => void connectMockController()}>
-        Simulated
-      </button>
-      <button className="link small" onClick={() => setHelp((h) => !h)}>
-        {help ? 'Hide setup' : 'How to set up'}
-      </button>
-      {help && (
-        <div className="muted small controller-help">
-          <ol>
-            <li>Close Zwift, BikeControl and any other app using the Click. A controller accepts only one connection.</li>
-            <li>If your Clicks are paired to the trainer (KICKR bridge / virtual shifting), unpair them there first, or the browser won't see them.</li>
-            <li>
-              Press a button on the <strong>right</strong> (+) side to wake it, click <strong>Connect Zwift Click</strong> and pick it. Then use{' '}
-              <strong>Add other side</strong> for the left (−) side.
-            </li>
-            <li>
-              The right side always works: <strong>+</strong> shifts up, <strong>B</strong> shifts down. The left side needs the Zwift app to unlock it about once a
-              day. Without that it may stop after about a minute (the app reconnects it automatically).
-            </li>
-          </ol>
-        </div>
-      )}
-    </div>
+    <section className="device-slot">
+      <h4>
+        🎮 Virtual shifters <span className={`slot-dot conn-${controller ? controllerConn : 'disconnected'}`}><span className="dot" /></span>
+      </h4>
+      {body}
+    </section>
   );
 }
 
@@ -256,9 +284,9 @@ function ZwiftClickPanel({ click }: { click: ZwiftClickController }) {
     );
 
   return (
-    <div className="card connect controller zwift">
+    <div className="zwift">
       <div className="zwift-head">
-        🎮 <strong>Zwift controller</strong>
+        <strong>Zwift controller</strong>
         <button className="btn small" onClick={() => void connectZwiftClick()}>
           {pods.length < 2 ? 'Add other side' : 'Add another'}
         </button>

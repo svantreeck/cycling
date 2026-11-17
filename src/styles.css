@@ -316,7 +316,7 @@ input[type='range'] { padding: 0; }
 
 /* zwift controller */
 .controller-help ol { margin: 4px 0 8px; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
-.controller.zwift { flex-direction: column; align-items: stretch; }
+.zwift { display: flex; flex-direction: column; gap: 8px; }
 .zwift-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .zwift-head strong { margin-right: auto; }
 .pods { display: flex; flex-direction: column; gap: 4px; }
@@ -332,3 +332,16 @@ input[type='range'] { padding: 0; }
 .ride-export { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 .btn.strava { background: #fc4c02; border-color: #fc4c02; color: #fff; text-decoration: none; }
 @media (max-width: 520px) { .summary-grid { grid-template-columns: repeat(2, 1fr); } }
+
+/* Devices card: trainer + virtual shifters */
+.devices .banner { margin-bottom: 12px; }
+.device-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.device-slot { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.device-slot.warn { border-color: var(--danger); }
+.device-slot h4 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 0.95rem; }
+.device-slot p { margin: 0; }
+.device-slot .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.device-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.slot-dot { margin-left: auto; display: inline-flex; }
+.slot-dot .dot { width: 9px; height: 9px; border-radius: 50%; }
+.slot-dot.conn-disconnected .dot { background: var(--muted); }

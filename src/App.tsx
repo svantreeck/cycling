@@ -3,7 +3,7 @@ import type { ControllerAction } from './ble/controller';
 import { ChallengeBoard } from './components/ChallengeBoard';
 import { Avatar, type Mood } from './components/Avatar';
 import { trainingLoad, type TrainingLoad } from './game/coach';
-import { ConnectionChip, ConnectPanel, ControllerPanel, MockControllerPad, SimControls } from './components/ConnectPanel';
+import { ConnectionChip, ConnectPanel, MockControllerPad, SimControls } from './components/ConnectPanel';
 import { CelebrationModal } from './components/LevelUpModal';
 import { ProfileScreen } from './components/Profile';
 import { StatsPanel } from './components/StatsPanel';
@@ -148,7 +148,6 @@ function Home() {
       </section>
 
       <ConnectPanel />
-      <ControllerPanel />
 
       <TodayCard />
       <WeekCard />
