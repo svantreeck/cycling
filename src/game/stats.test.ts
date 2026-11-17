@@ -1,4 +1,4 @@
-import { addStats, emptyStats, pointsToNext, statGains, statLevel, statsFromRides } from './stats';
+import { addStats, emptyStats, pointsToNext, statGains, statLevel } from './stats';
 
 describe('fitness stats', () => {
   it('maps zone time to systems (Z1 trains nothing)', () => {
@@ -30,9 +30,9 @@ describe('fitness stats', () => {
     expect(pointsToNext(9)).toBe(450);
   });
 
-  it('adds and seeds from rides', () => {
-    const a = statsFromRides([{ zoneSec: [0, 3600, 0, 0, 0, 0, 0] }, { zoneSec: [0, 3600, 0, 0, 0, 0, 0] }]);
-    expect(a.endurance).toBeCloseTo(2 * statGains([0, 3600, 0, 0, 0, 0, 0]).endurance, 1);
-    expect(addStats(emptyStats(), a)).toEqual(a);
+  it('adds gains', () => {
+    const g = statGains([0, 3600, 0, 0, 0, 0, 0]);
+    const a = addStats(addStats(emptyStats(), g), g);
+    expect(a.endurance).toBeCloseTo(2 * g.endurance, 1);
   });
 });

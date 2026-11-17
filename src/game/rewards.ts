@@ -2,7 +2,7 @@ import type { RunResult } from './challengeEngine';
 import { CHALLENGES, type Challenge } from './challenges';
 
 export const REPEAT_FACTOR = 0.25;
-export const BOUNTY_FACTOR = 1.5;
+export const BONUS_FACTOR = 1.5;
 export const FTP_GAIN_XP_PER_WATT = 10;
 export const FTP_GAIN_XP_CAP = 300;
 
@@ -13,7 +13,7 @@ export interface RewardInput {
   challenge: Challenge;
   result: RunResult;
   previousCompletions: number;
-  isBounty: boolean;
+  isBonus: boolean;
   oldFtp: number;
 }
 
@@ -22,7 +22,7 @@ export interface Reward {
   lines: string[];
 }
 
-export function challengeReward({ challenge, result, previousCompletions, isBounty, oldFtp }: RewardInput): Reward {
+export function challengeReward({ challenge, result, previousCompletions, isBonus, oldFtp }: RewardInput): Reward {
   if (!result.passed) {
     const what = challenge.workout ? 'workout bonus' : 'challenge XP';
     return { xp: 0, lines: [`No ${what} this time, but your ride XP still counts.`] };
@@ -39,10 +39,10 @@ export function challengeReward({ challenge, result, previousCompletions, isBoun
   } else {
     lines.push(`First completion: ${base} XP`);
   }
-  if (isBounty) {
-    const bonus = Math.round(base * (BOUNTY_FACTOR - 1));
+  if (isBonus) {
+    const bonus = Math.round(base * (BONUS_FACTOR - 1));
     base += bonus;
-    lines.push(`Today's ride bonus ×${BOUNTY_FACTOR}: +${bonus} XP`);
+    lines.push(`Today's ride bonus ×${BONUS_FACTOR}: +${bonus} XP`);
   }
   let xp = base;
   if (result.newFtp != null && result.newFtp > oldFtp) {
@@ -58,21 +58,21 @@ export type Availability = 'available' | 'locked' | 'completed';
 export interface BoardEntry {
   challenge: Challenge;
   availability: Availability;
-  isBounty: boolean;
+  isBonus: boolean;
 }
 
 /** Challenges to show on the board for a rider at `level`. */
 export function challengeBoard(
   level: number,
   completed: Record<string, { count: number }>,
-  bountyId: string | undefined,
+  bonusId: string | undefined,
 ): BoardEntry[] {
   return CHALLENGES.map((c) => {
     const done = (completed[c.id]?.count ?? 0) > 0;
     return {
       challenge: c,
       availability: level < c.minLevel ? 'locked' : done && !c.repeatable ? 'completed' : 'available',
-      isBounty: c.id === bountyId,
+      isBonus: c.id === bonusId,
     };
   });
 }

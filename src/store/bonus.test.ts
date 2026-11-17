@@ -19,7 +19,7 @@ describe("today's ride bonus", () => {
   });
 
   it('is gone once claimed today', () => {
-    expect(todayBonusId({ ...tested(), bountyClaimedOn: localDate(new Date(NOW)) }, null, NOW)).toBeUndefined();
+    expect(todayBonusId({ ...tested(), bonusClaimedOn: localDate(new Date(NOW)) }, null, NOW)).toBeUndefined();
   });
 
   it('is not offered on a rest day', () => {

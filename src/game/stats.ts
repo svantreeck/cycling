@@ -44,7 +44,6 @@ export const addStats = (a: Stats, b: Stats): Stats => {
   return out;
 };
 
-export const statsFromRides = (rides: { zoneSec: number[] }[]): Stats => rides.reduce((acc, r) => addStats(acc, statGains(r.zoneSec)), emptyStats());
 
 /** Points to go from level L to L+1. Level 10 takes roughly six months of steady training. */
 export const pointsToNext = (level: number) => 50 * level;

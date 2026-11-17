@@ -83,7 +83,6 @@ input[type='range'] { padding: 0; }
 .home-actions { display: flex; gap: 12px; margin: 12px 0; }
 .connect { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .connect.warn { border-color: var(--danger); }
-.bounty { border-color: #6b5413; background: linear-gradient(135deg, #1f1d22, #2a2410); }
 
 /* ride */
 .ride-stage { display: flex; flex-direction: column; align-items: center; background: radial-gradient(ellipse at center, color-mix(in srgb, var(--zone) 25%, transparent) 0%, transparent 70%); border-radius: var(--radius); padding-top: 8px; transition: background 0.5s; }
@@ -146,7 +145,7 @@ input[type='range'] { padding: 0; }
 .ch-meta { display: flex; gap: 12px; font-size: 0.85rem; }
 .ch-meta .xp { color: var(--gold); font-weight: 700; }
 .ch.locked { opacity: 0.5; }
-.ch.bounty { box-shadow: 0 0 0 1px var(--gold), 0 0 20px rgba(255, 213, 79, 0.15); }
+.ch.bonus { box-shadow: 0 0 0 1px var(--gold), 0 0 20px rgba(255, 213, 79, 0.15); }
 .filter-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 0; }
 .chip.active { background: var(--accent); color: #0b1020; font-weight: 700; }
 .timeline.small { height: 36px; padding: 3px; }

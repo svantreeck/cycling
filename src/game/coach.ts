@@ -227,7 +227,7 @@ export const weekStart = (day: number) => day - ((weekday(day) + 6) % 7);
 
 // ---- training blocks ---------------------------------------------------------
 // A plan runs in 4-week blocks: three build weeks with rising load, then a recovery week that ends with an
-// FTP retest. Passing the retest promotes the rider (replacing the old every-5-levels promotion trials).
+// FTP retest. Passing the retest promotes the rider.
 
 export const BLOCK_WEEKS = 4;
 /** Weekly load relative to the plan's base target, per week of the block. */

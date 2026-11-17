@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { totalDurationSec, fmtDur, WORKOUTS, type Challenge, type FitnessSystem, type WorkoutCategory } from '../game/challenges';
-import { REPEAT_FACTOR, BOUNTY_FACTOR, challengeBoard } from '../game/rewards';
+import { REPEAT_FACTOR, BONUS_FACTOR, challengeBoard } from '../game/rewards';
 import { todayBonusId, useGame } from '../store/gameStore';
 import { WorkoutProfile } from './WorkoutProfile';
 
@@ -88,9 +88,9 @@ export function ChallengeBoard() {
           const rec = profile.completed[c.id];
           const bonus = c.id === bonusId;
           return (
-            <div key={c.id} className={`card ch workout cat-${c.workout!.category} ${bonus ? 'bounty' : ''}`}>
+            <div key={c.id} className={`card ch workout cat-${c.workout!.category} ${bonus ? 'bonus' : ''}`}>
               <div className="ch-top">
-                {bonus && <span className="pill gold">★ Today's ride ×{BOUNTY_FACTOR}</span>}
+                {bonus && <span className="pill gold">★ Today's ride ×{BONUS_FACTOR}</span>}
                 <span className="pill tier">{c.workout!.focus}</span>
                 <span className="pill">{c.workout!.tss} TSS</span>
                 <span className="pill rungs" title="Difficulty within this category">
@@ -106,7 +106,7 @@ export function ChallengeBoard() {
               )}
               <div className="ch-meta">
                 <span>⏱ {fmtDur(totalDurationSec(c))}</span>
-                <span className="xp">+{bonus ? Math.round(c.xpReward * BOUNTY_FACTOR) : c.xpReward} XP</span>
+                <span className="xp">+{bonus ? Math.round(c.xpReward * BONUS_FACTOR) : c.xpReward} XP</span>
                 {rec && rec.count > 0 && <span className="muted">✓ ×{rec.count}</span>}
               </div>
               {startButton(c)}
@@ -120,18 +120,18 @@ export function ChallengeBoard() {
         <span className="muted">Pass/fail tests that earn bonus XP. Promotions come from completing training blocks.</span>
       </div>
       <div className="board-grid">
-        {entries.map(({ challenge: c, availability, isBounty }) => {
+        {entries.map(({ challenge: c, availability, isBonus }) => {
           const rec = profile.completed[c.id];
           const repeat = (rec?.count ?? 0) > 0;
           let xp = repeat ? Math.round(c.xpReward * REPEAT_FACTOR) : c.xpReward;
-          if (isBounty) xp = Math.round(xp * BOUNTY_FACTOR);
+          if (isBonus) xp = Math.round(xp * BONUS_FACTOR);
           const hasErg = c.steps.some((s) => s.kind !== 'warmup' && s.kind !== 'cooldown' && s.mode === 'erg');
           const locked = availability === 'locked';
           return (
-            <div key={c.id} className={`card ch ${availability} ${isBounty ? 'bounty' : ''}`}>
+            <div key={c.id} className={`card ch ${availability} ${isBonus ? 'bonus' : ''}`}>
               <div className="ch-top">
                 <span className="pill tier">Tier {c.tier}</span>
-                {isBounty && <span className="pill gold">★ Today's ride ×{BOUNTY_FACTOR}</span>}
+                {isBonus && <span className="pill gold">★ Today's ride ×{BONUS_FACTOR}</span>}
                 <span className="pill">{c.success.kind === 'ramp' ? 'Test' : hasErg ? 'ERG' : 'Free effort'}</span>
               </div>
               <h3>

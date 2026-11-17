@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { challengeById, fmtDur, totalDurationSec, trainingStress, type Challenge } from '../game/challenges';
 import { suggestToday, swapsFor, trainingLoad, type SuggestionKind } from '../game/coach';
-import { BOUNTY_FACTOR } from '../game/rewards';
+import { BONUS_FACTOR } from '../game/rewards';
 import { todayBonusClaimed, todayBonusId, useGame } from '../store/gameStore';
 import { WorkoutProfile } from './WorkoutProfile';
 
@@ -40,7 +40,7 @@ function TodayInner({ suggestion, load }: { suggestion: ReturnType<typeof sugges
   const tss = workout.workout?.tss ?? trainingStress(workout.steps);
   const bonus = todayBonusId(profile, todayPick) === workout.id;
   const claimed = todayBonusClaimed(profile);
-  const xp = bonus ? Math.round(workout.xpReward * BOUNTY_FACTOR) : workout.xpReward;
+  const xp = bonus ? Math.round(workout.xpReward * BONUS_FACTOR) : workout.xpReward;
 
   const swapBtn = (label: string, target: Challenge | null) => (
     <button className="chip small" disabled={!target} title={target ? `${target.name} · ${fmtDur(totalDurationSec(target))}` : undefined} onClick={() => target && setChosenId(target.id)}>
@@ -55,7 +55,7 @@ function TodayInner({ suggestion, load }: { suggestion: ReturnType<typeof sugges
         <span className="pill gold">{KIND_LABEL[suggestion.kind]}</span>
         {bonus && (
           <span className="pill bonus" title="Ride today's suggestion (or a swap of it) for bonus XP, once a day">
-            ★ ×{BOUNTY_FACTOR} XP today
+            ★ ×{BONUS_FACTOR} XP today
           </span>
         )}
         {claimed && <span className="pill done">✓ Bonus earned</span>}

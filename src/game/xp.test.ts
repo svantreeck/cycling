@@ -1,4 +1,4 @@
-import { addXp, initialLevelState, releaseBankedXp, rideXp, xpToNext } from './xp';
+import { addXp, initialLevelState, rideXp, xpToNext } from './xp';
 
 describe('xp curve', () => {
   it('grows with level', () => {
@@ -24,21 +24,8 @@ describe('addXp', () => {
     expect(levelsGained).toEqual([2, 3]);
   });
 
-  it('has no level gates any more', () => {
+  it('levels up past every 5th level freely', () => {
     const s = { ...initialLevelState(), level: 5, xp: 0 };
     expect(addXp(s, xpToNext(5) + 10).state).toMatchObject({ level: 6, xp: 10 });
-  });
-});
-
-describe('releaseBankedXp', () => {
-  it('applies XP banked at an old gate (and a full bar) without double counting', () => {
-    const capped = { ...initialLevelState(), level: 5, xp: xpToNext(5), bankedXp: 50, totalXp: 9999 };
-    const s = releaseBankedXp(capped);
-    expect(s).toMatchObject({ level: 6, xp: 50, bankedXp: 0, totalXp: 9999 });
-  });
-
-  it('leaves normal progress alone', () => {
-    const s = { ...initialLevelState(), level: 3, xp: 20, totalXp: 500 };
-    expect(releaseBankedXp(s)).toEqual(s);
   });
 });

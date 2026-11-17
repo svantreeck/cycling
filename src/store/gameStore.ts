@@ -161,13 +161,13 @@ export function todayBonusId(
   todayPick: { suggestionId: string; workoutId: string } | null,
   now = Date.now(),
 ): string | undefined {
-  if (profile.bountyClaimedOn === localDate(new Date(now))) return undefined;
+  if (profile.bonusClaimedOn === localDate(new Date(now))) return undefined;
   const s = suggestToday(profile, now);
   if (s.kind === 'rest') return undefined;
   return todayPick?.suggestionId === s.workout.id ? todayPick.workoutId : s.workout.id;
 }
 
-export const todayBonusClaimed = (profile: Profile, now = Date.now()) => profile.bountyClaimedOn === localDate(new Date(now));
+export const todayBonusClaimed = (profile: Profile, now = Date.now()) => profile.bonusClaimedOn === localDate(new Date(now));
 
 let unsubs: Unsubscribe[] = [];
 let lastSave = 0;
@@ -216,12 +216,12 @@ export const useGame = create<GameState>((set, get) => {
     const challenge = run.challenge;
     const record = profile.completed[challenge.id] ?? { count: 0, attempts: 0 };
     // The bonus is decided by the suggestion as it stood when the workout started (rides are only added at ride end).
-    const isBounty = run.bonusId === challenge.id;
+    const isBonus = run.bonusId === challenge.id;
     const reward = challengeReward({
       challenge,
       result,
       previousCompletions: record.count,
-      isBounty,
+      isBonus,
       oldFtp: profile.ftp,
     });
 
@@ -237,7 +237,7 @@ export const useGame = create<GameState>((set, get) => {
         },
       },
     };
-    if (result.passed && isBounty) next.bountyClaimedOn = localDate();
+    if (result.passed && isBonus) next.bonusClaimedOn = localDate();
     if (result.passed && result.newFtp && challenge.id === RAMP_TEST.id) {
       next.ftp = result.newFtp;
       next.ftpHistory = [...next.ftpHistory, { at: Date.now(), ftp: result.newFtp }];

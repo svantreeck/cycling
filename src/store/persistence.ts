@@ -1,13 +1,10 @@
 import type { Feel, Promotion, TrainingPlan } from '../game/coach';
-import { statsFromRides, type Stats } from '../game/stats';
-import { initialLevelState, releaseBankedXp, type LevelState } from '../game/xp';
+import { emptyStats, type Stats } from '../game/stats';
+import { initialLevelState, type LevelState } from '../game/xp';
 
 export type SpeedUnit = 'kmh' | 'mph';
 
-// Storage keys keep the earlier "cyclingquest" prefix so existing progress survives the rename.
 export const STORAGE_KEY = 'cyclingquest.profile';
-/** Key used before the rename; read once so existing progress carries over. */
-export const LEGACY_STORAGE_KEY = 'kickrquest.profile';
 export const SCHEMA_VERSION = 1;
 const MAX_RIDES = 200;
 
@@ -46,8 +43,8 @@ export interface Profile {
   rides: RideSummary[];
   cosmetics: { kitColor: string };
   settings: { onboarded: boolean; speedUnit: SpeedUnit };
-  /** local date (YYYY-MM-DD) the daily bounty was last claimed */
-  bountyClaimedOn?: string;
+  /** local date (YYYY-MM-DD) today's-ride bonus was last claimed */
+  bonusClaimedOn?: string;
   /** the rider's goal and weekly availability; the coach uses defaults when unset */
   plan?: TrainingPlan;
   /** lifetime fitness-stat points per system (never trimmed, unlike `rides`) */
@@ -64,34 +61,32 @@ export const defaultProfile = (): Profile => ({
   levels: initialLevelState(),
   completed: {},
   rides: [],
-  stats: statsFromRides([]),
+  stats: emptyStats(),
   promotions: [],
   cosmetics: { kitColor: '#95a5a6' },
   settings: { onboarded: false, speedUnit: 'kmh' },
 });
 
-/** Upgrade older saved shapes. Add a case per schema bump. */
+/** Read a saved profile, filling any missing fields with defaults. */
 export function migrate(raw: unknown): Profile {
   if (!raw || typeof raw !== 'object') return defaultProfile();
   const p = raw as Partial<Profile>;
   const base = defaultProfile();
-  // v1 is the first version: fill any missing fields with defaults.
+  const levels = { ...base.levels, ...(p.levels ?? {}) };
   return {
     ...base,
     ...p,
-    // Level gates were removed: release any XP banked while stuck at one.
-    levels: releaseBankedXp({ ...base.levels, ...(p.levels ?? {}) }),
+    levels: { level: levels.level, xp: levels.xp, totalXp: levels.totalXp },
     cosmetics: { ...base.cosmetics, ...(p.cosmetics ?? {}) },
     settings: { ...base.settings, ...(p.settings ?? {}) },
-    // Stats arrived after rides were already being saved: seed them from the saved rides.
-    stats: { ...statsFromRides(p.rides ?? []), ...(p.stats ?? {}) },
+    stats: { ...base.stats, ...(p.stats ?? {}) },
     schemaVersion: SCHEMA_VERSION,
   };
 }
 
 export function loadProfile(storage: Storage | undefined = globalThis.localStorage): Profile {
   try {
-    const s = storage?.getItem(STORAGE_KEY) ?? storage?.getItem(LEGACY_STORAGE_KEY);
+    const s = storage?.getItem(STORAGE_KEY);
     return s ? migrate(JSON.parse(s)) : defaultProfile();
   } catch (e) {
     console.warn('Failed to load profile, starting fresh', e);

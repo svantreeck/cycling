@@ -15,20 +15,14 @@ export interface LevelState {
   level: number;
   /** progress into the current level */
   xp: number;
-  /** legacy: XP banked at the old every-5-levels promotion gates; released by `releaseBankedXp` */
-  bankedXp: number;
   /** lifetime XP earned */
   totalXp: number;
-  /** legacy: gate levels whose old promotion trial was passed (kept for history) */
-  promotionsCleared: number[];
 }
 
 export const initialLevelState = (): LevelState => ({
   level: 1,
   xp: 0,
-  bankedXp: 0,
   totalXp: 0,
-  promotionsCleared: [],
 });
 
 export interface AddXpResult {
@@ -47,13 +41,4 @@ export function addXp(s: LevelState, amount: number): AddXpResult {
     levelsGained.push(level);
   }
   return { state: { ...s, level, xp, totalXp: s.totalXp + Math.max(0, amount) }, levelsGained };
-}
-
-/**
- * Level gates were replaced by training-block promotions. Riders saved while stuck at a gate get their banked XP
- * (and any full bar) applied. Banked XP is already in totalXp, so it isn't counted twice.
- */
-export function releaseBankedXp(s: LevelState): LevelState {
-  const res = addXp({ ...s, bankedXp: 0 }, s.bankedXp ?? 0);
-  return { ...res.state, totalXp: s.totalXp };
 }
