@@ -1,6 +1,6 @@
-import type { Feel, TrainingPlan } from '../game/coach';
+import type { Feel, Promotion, TrainingPlan } from '../game/coach';
 import { statsFromRides, type Stats } from '../game/stats';
-import { initialLevelState, type LevelState } from '../game/xp';
+import { initialLevelState, releaseBankedXp, type LevelState } from '../game/xp';
 
 export type SpeedUnit = 'kmh' | 'mph';
 
@@ -49,6 +49,8 @@ export interface Profile {
   plan?: TrainingPlan;
   /** lifetime fitness-stat points per system (never trimmed, unlike `rides`) */
   stats: Stats;
+  /** training blocks completed with a passed FTP retest; the count is the rider's rank */
+  promotions: Promotion[];
 }
 
 export const defaultProfile = (): Profile => ({
@@ -60,6 +62,7 @@ export const defaultProfile = (): Profile => ({
   completed: {},
   rides: [],
   stats: statsFromRides([]),
+  promotions: [],
   cosmetics: { kitColor: '#95a5a6' },
   settings: { onboarded: false, speedUnit: 'kmh' },
 });
@@ -73,7 +76,8 @@ export function migrate(raw: unknown): Profile {
   return {
     ...base,
     ...p,
-    levels: { ...base.levels, ...(p.levels ?? {}) },
+    // Level gates were removed: release any XP banked while stuck at one.
+    levels: releaseBankedXp({ ...base.levels, ...(p.levels ?? {}) }),
     cosmetics: { ...base.cosmetics, ...(p.cosmetics ?? {}) },
     settings: { ...base.settings, ...(p.settings ?? {}) },
     // Stats arrived after rides were already being saved: seed them from the saved rides.

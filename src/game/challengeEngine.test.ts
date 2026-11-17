@@ -157,17 +157,6 @@ describe('ChallengeRun: ramp test', () => {
   });
 });
 
-describe('promotion challenges', () => {
-  it('scale with gate level', () => {
-    const p5 = challengeById('promo-5')!;
-    const p20 = challengeById('promo-20')!;
-    expect(p5.promotionFor).toBe(5);
-    const work = (c: Challenge) => c.steps.filter((s) => s.kind === 'work');
-    expect(work(p20).length).toBeGreaterThan(work(p5).length);
-    expect(work(p20)[0].targetPctFtp!).toBeGreaterThan(work(p5)[0].targetPctFtp!);
-  });
-});
-
 describe('workouts', () => {
   const wk: Challenge = { ...simple, id: 'wk', workout: { category: 'endurance', focus: 'Zone 2', trains: ['endurance'], tss: 10, rung: 1, rungs: 1 } };
 

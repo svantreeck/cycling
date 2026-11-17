@@ -69,12 +69,8 @@ input[type='range'] { padding: 0; }
 .xpbar { margin: 10px 0; }
 .xpbar-head { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px; }
 .xpbar-level { font-weight: 800; color: var(--gold); }
-.xpbar-nums .banked { color: var(--gold); }
 .xpbar-track { position: relative; height: 14px; background: #0c0f1d; border-radius: 999px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); }
 .xpbar-fill { height: 100%; background: linear-gradient(90deg, #ffb300, #ffe082); border-radius: 999px; transition: width 0.3s; }
-.xpbar-track.capped .xpbar-fill { background: repeating-linear-gradient(45deg, #ffb300, #ffb300 8px, #ff8f00 8px, #ff8f00 16px); animation: stripes 1s linear infinite; background-size: 200% 100%; }
-.xpbar-gate { position: absolute; right: 4px; top: -2px; font-size: 0.75rem; }
-.xpbar-note { font-size: 0.8rem; color: var(--gold); margin-top: 6px; }
 .xpbar.compact .xpbar-track { height: 8px; }
 
 /* home */
@@ -150,7 +146,6 @@ input[type='range'] { padding: 0; }
 .ch-meta { display: flex; gap: 12px; font-size: 0.85rem; }
 .ch-meta .xp { color: var(--gold); font-weight: 700; }
 .ch.locked { opacity: 0.5; }
-.ch.promo { border: 1px solid #8c6d1f; background: linear-gradient(135deg, #24202a, #2d2512); }
 .ch.bounty { box-shadow: 0 0 0 1px var(--gold), 0 0 20px rgba(255, 213, 79, 0.15); }
 .filter-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 0; }
 .chip.active { background: var(--accent); color: #0b1020; font-weight: 700; }
@@ -285,3 +280,13 @@ input[type='range'] { padding: 0; }
 .checkin-q { font-weight: 700; }
 .checkin-opts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .stat-up .levelup-num { font-size: 2.6rem; }
+
+/* training blocks */
+.block-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.block-label { font-weight: 800; font-size: 0.85rem; }
+.block-weeks { display: flex; gap: 3px; }
+.bw { width: 22px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); }
+.bw.rec { background: rgba(46, 204, 113, 0.25); }
+.bw.past { background: var(--accent); opacity: 0.6; }
+.bw.now { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.bw.rec.now, .bw.rec.past { background: #2ecc71; }

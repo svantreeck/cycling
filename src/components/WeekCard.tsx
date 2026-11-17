@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { GOALS, STREAK_FRACTION, weekProgress } from '../game/coach';
+import { BLOCK_WEEKS, blockInfo, GOALS, isPromoted, STREAK_FRACTION, weekProgress } from '../game/coach';
 import { useGame } from '../store/gameStore';
 import { PlanSetup } from './PlanSetup';
 
@@ -11,6 +11,8 @@ export function WeekCard() {
   const [editing, setEditing] = useState(false);
   const { plan, rides } = profile;
   const week = useMemo(() => (plan ? weekProgress(rides, plan) : null), [plan, rides]);
+  const block = plan ? blockInfo(plan) : null;
+  const retestDue = !!(plan && block?.retestFor && !isPromoted(profile.promotions, plan, block.retestFor));
 
   if (!plan || !week) {
     return (
@@ -63,6 +65,19 @@ export function WeekCard() {
           <span className="pill tier">{GOALS[plan.goal].name}</span>
           {daysLeft != null && daysLeft >= 0 && <span className="pill gold">🏁 {daysLeft === 0 ? 'Event today' : `${daysLeft} days to go`}</span>}
         </div>
+        {block && (
+          <div className="block-row" title="Training blocks: 3 build weeks with rising load, then a recovery week ending with an FTP retest.">
+            <span className="block-label">Block {block.number}</span>
+            <div className="block-weeks">
+              {Array.from({ length: BLOCK_WEEKS }, (_, i) => (
+                <span key={i} className={`bw ${i + 1 < block.week ? 'past' : i + 1 === block.week ? 'now' : ''} ${i === BLOCK_WEEKS - 1 ? 'rec' : ''}`} />
+              ))}
+            </div>
+            <span className="muted small">
+              {retestDue ? '🎯 FTP retest due: pass it to get promoted' : block.recovery ? 'Recovery week: lighter load, retest at the end' : `Build week ${block.week} of ${BLOCK_WEEKS - 1}`}
+            </span>
+          </div>
+        )}
         <div className="week-days">
           {week.days.map((d) => (
             <div key={d.day} className={`wd ${d.isToday ? 'is-today' : ''} ${d.tss > 0 ? 'rode' : ''} ${d.plannedMin === 0 ? 'rest' : ''}`} title={d.tss > 0 ? `${d.tss} TSS` : d.plannedMin ? `${d.plannedMin} min planned` : 'Rest day'}>

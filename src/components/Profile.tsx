@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { AVATAR_TIERS, unlockedKitColors } from '../game/avatarTiers';
 import { useGame } from '../store/gameStore';
 import { speedLabel } from '../units';
+import { roman } from '../game/challenges';
 import { GOALS } from '../game/coach';
 import { Avatar } from './Avatar';
 import { PlanSetup } from './PlanSetup';
@@ -78,7 +79,7 @@ export function ProfileScreen() {
           </div>
         </div>
         <div className="muted small">
-          Lifetime XP {Math.floor(profile.levels.totalXp).toLocaleString()} · Promotions passed: {profile.levels.promotionsCleared.length}
+          Lifetime XP {Math.floor(profile.levels.totalXp).toLocaleString()} · Rank {profile.promotions.length ? roman(profile.promotions.length) : '–'} ({profile.promotions.length} training block{profile.promotions.length === 1 ? '' : 's'} completed)
         </div>
       </div>
 

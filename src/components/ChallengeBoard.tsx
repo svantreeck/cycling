@@ -36,7 +36,7 @@ export function ChallengeBoard() {
   const [cat, setCat] = useState<WorkoutCategory | 'all'>('all');
   const [len, setLen] = useState<Length>('any');
   const bounty = activeBounty(profile);
-  const entries = challengeBoard(profile.levels.level, profile.levels.promotionsCleared, profile.completed, bounty?.id);
+  const entries = challengeBoard(profile.levels.level, profile.completed, bounty?.id);
   const connected = conn === 'connected';
   const lengthOk = LENGTHS.find((l) => l.id === len)!.test;
   const catOrder = CATEGORIES.map((c) => c.id);
@@ -115,7 +115,7 @@ export function ChallengeBoard() {
 
       <div className="board-head">
         <h2>Challenges</h2>
-        <span className="muted">Pass/fail tests that earn bonus XP. Promotion Trials unlock the next levels.</span>
+        <span className="muted">Pass/fail tests that earn bonus XP. Promotions come from completing training blocks.</span>
       </div>
       <div className="board-grid">
         {entries.map(({ challenge: c, availability, isBounty }) => {
@@ -126,9 +126,9 @@ export function ChallengeBoard() {
           const hasErg = c.steps.some((s) => s.kind !== 'warmup' && s.kind !== 'cooldown' && s.mode === 'erg');
           const locked = availability === 'locked';
           return (
-            <div key={c.id} className={`card ch ${availability} ${c.promotionFor ? 'promo' : ''} ${isBounty ? 'bounty' : ''}`}>
+            <div key={c.id} className={`card ch ${availability} ${isBounty ? 'bounty' : ''}`}>
               <div className="ch-top">
-                <span className="pill tier">{c.promotionFor ? 'PROMOTION' : `Tier ${c.tier}`}</span>
+                <span className="pill tier">Tier {c.tier}</span>
                 {isBounty && <span className="pill gold">★ Daily bounty ×{BOUNTY_FACTOR}</span>}
                 <span className="pill">{c.success.kind === 'ramp' ? 'Test' : hasErg ? 'ERG' : 'Free effort'}</span>
               </div>

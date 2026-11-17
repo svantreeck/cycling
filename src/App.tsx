@@ -10,7 +10,7 @@ import { WeekCard } from './components/WeekCard';
 import { RideScreen } from './components/RideHUD';
 import { XPBar } from './components/XPBar';
 import { nextTier, tierFor } from './game/avatarTiers';
-import { fmtDur, totalDurationSec } from './game/challenges';
+import { fmtDur, roman, totalDurationSec } from './game/challenges';
 import { activeBounty, useGame, type Screen } from './store/gameStore';
 
 const TABS: { id: Screen; label: string }[] = [
@@ -75,6 +75,11 @@ function Home() {
           <StatsPanel compact />
           <div className="hero-stats">
             <span>FTP <strong>{profile.ftp} W</strong></span>
+            {profile.promotions.length > 0 && (
+              <span title={`${profile.promotions.length} training blocks completed`}>
+                Rank <strong>{roman(profile.promotions.length)}</strong>
+              </span>
+            )}
             <span>Rides <strong>{profile.rides.length}</strong></span>
             <span>Challenges <strong>{Object.values(profile.completed).reduce((a, r) => a + r.count, 0)}</strong></span>
           </div>
@@ -142,8 +147,9 @@ function Onboarding() {
       <div className="modal">
         <h2>Welcome to Cycling Quest ⚡</h2>
         <p>
-          You earn XP for every minute you ride, and more in harder zones. Challenges give bonus XP. Every 5 levels there's a
-          Promotion Trial you have to pass to keep levelling, and your avatar gets new gear as you go.
+          You earn XP for every minute you ride, and more in harder zones. Set a goal and the coach suggests a ride each
+          day. Train in 4-week blocks and pass the FTP retest at the end of each one to get promoted. Your avatar gets new gear
+          as you level up.
         </p>
         <label>
           Rider name

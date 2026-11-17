@@ -1,5 +1,6 @@
 import { challengeById } from './challenges';
 import {
+  blockInfo,
   dayIndex,
   hardPerWeek,
   isHardRide,
@@ -194,7 +195,7 @@ describe('plans', () => {
   const plan = (goal: TrainingPlan['goal'], extra: Partial<TrainingPlan> = {}): TrainingPlan => ({
     goal,
     minutesByDay: [90, 0, 60, 45, 60, 0, 120], // Sun … Sat
-    createdAt: 0,
+    createdAt: new Date(2026, 10, 16, 9).getTime(), // block 1, week 1 is the test week
     ...extra,
   });
   const withPlan = (rides: RideLog[], p: TrainingPlan): CoachProfile => ({ ...tested(rides), plan: p });
@@ -280,5 +281,45 @@ describe('plans', () => {
     const done = weekProgress([...rides, ride(MON, 0, { tss: 300 })], p, MON);
     expect(done.thisWeekDone).toBe(true);
     expect(done.streak).toBe(3);
+  });
+});
+
+describe('training blocks', () => {
+  const MON = new Date(2026, 10, 16, 12).getTime();
+  const everyDay: TrainingPlan['minutesByDay'] = [60, 60, 60, 60, 60, 60, 60];
+  // Plan created mid-week three weeks ago: blocks are anchored to that week's Monday.
+  const plan: TrainingPlan = { goal: 'fitness', minutesByDay: everyDay, createdAt: MON - 19 * DAY };
+  const profile = (rides: RideLog[], promotions: CoachProfile['promotions'] = []): CoachProfile => ({ ...tested(rides), plan, promotions });
+
+  it('numbers blocks and weeks from the Monday the plan started', () => {
+    expect(blockInfo(plan, MON - 21 * DAY)).toMatchObject({ number: 1, week: 1, recovery: false, retestFor: null });
+    expect(blockInfo(plan, MON)).toMatchObject({ number: 1, week: 4, recovery: true, retestFor: null });
+    expect(blockInfo(plan, MON + 4 * DAY)).toMatchObject({ number: 1, week: 4, retestFor: 1 }); // Friday of week 4
+    expect(blockInfo(plan, MON + 7 * DAY)).toMatchObject({ number: 2, week: 1, retestFor: 1 }); // grace days
+    expect(blockInfo(plan, MON + 10 * DAY)).toMatchObject({ number: 2, week: 1, retestFor: null });
+  });
+
+  it('weekly target rises through the build weeks and drops in the recovery week', () => {
+    const base = weeklyTargetTss(plan);
+    expect(weekProgress([], plan, MON - 21 * DAY).target).toBe(base);
+    expect(weekProgress([], plan, MON - 7 * DAY).target).toBe(Math.round((base * 1.15) / 10) * 10);
+    expect(weekProgress([], plan, MON).target).toBe(Math.round((base * 0.65) / 10) * 10);
+  });
+
+  it('suggests the FTP retest in the retest window until promoted', () => {
+    const rides = [ride(MON + 4 * DAY, 2, { id: 'wk-z2-60' })];
+    const s = suggestToday(profile(rides), MON + 4 * DAY);
+    expect(s.workout.id).toBe('ramp-test');
+    expect(s.reason).toMatch(/Rank I\b/);
+    const promoted = suggestToday(profile(rides, [{ planCreatedAt: plan.createdAt, block: 1, at: 0, oldFtp: 250, newFtp: 255 }]), MON + 4 * DAY);
+    expect(promoted.workout.id).not.toBe('ramp-test');
+  });
+
+  it('recovery week allows one hard day and shortens sessions', () => {
+    const wed = MON + 2 * DAY;
+    const s = suggestToday(profile([ride(wed, 2, { id: 'wk-vo2-5x3' })]), wed);
+    expect(s.kind).toBe('endurance');
+    expect(s.reason).toMatch(/Recovery week/);
+    expect(s.workout.steps.reduce((a, x) => a + x.durationSec, 0)).toBeLessThanOrEqual(45 * 60);
   });
 });

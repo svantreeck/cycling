@@ -1,5 +1,5 @@
 import { challengeById } from './challenges';
-import { challengeBoard, challengeReward } from './rewards';
+import { challengeBoard, challengeReward, promotionXp } from './rewards';
 
 const tabata = challengeById('tabata')!; // 300 XP
 const pass = { passed: true, aborted: false, reason: '' };
@@ -28,18 +28,19 @@ describe('challengeReward', () => {
 });
 
 describe('challengeBoard', () => {
-  it('shows the next promotion and locks high-level challenges', () => {
-    const b = challengeBoard(3, [], {}, undefined);
-    expect(b[0].challenge.id).toBe('promo-5');
-    expect(b[0].availability).toBe('locked');
+  it('lists challenges, locking ones above your level; no promotion trials', () => {
+    const b = challengeBoard(3, {}, undefined);
+    expect(b.some((e) => e.challenge.id.startsWith('promo-'))).toBe(false);
     expect(b.find((e) => e.challenge.id === 'tabata')!.availability).toBe('locked');
     expect(b.find((e) => e.challenge.id === 'ramp-test')!.availability).toBe('available');
+    expect(challengeBoard(3, {}, 'spin-up').find((e) => e.isBounty)!.challenge.id).toBe('spin-up');
   });
+});
 
-  it('offers the promo at the gate and moves on once cleared', () => {
-    expect(challengeBoard(5, [], {}, undefined)[0]).toMatchObject({ availability: 'available' });
-    expect(challengeBoard(5, [5], {}, undefined)[0].challenge.id).toBe('promo-10');
-    expect(challengeBoard(7, [5], {}, undefined)[0].challenge.id).toBe('promo-10');
+describe('promotionXp', () => {
+  it('grows with rank', () => {
+    expect(promotionXp(1)).toBe(300);
+    expect(promotionXp(3)).toBe(500);
   });
 });
 

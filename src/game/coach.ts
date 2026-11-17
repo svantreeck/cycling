@@ -1,4 +1,4 @@
-import { RAMP_TEST, WORKOUTS, challengeById, totalDurationSec, type Challenge, type WorkoutCategory } from './challenges';
+import { RAMP_TEST, WORKOUTS, challengeById, roman, totalDurationSec, type Challenge, type WorkoutCategory } from './challenges';
 
 /**
  * The coach: training load (fitness / fatigue / form) and "today's ride".
@@ -25,6 +25,7 @@ export interface CoachProfile {
   completed: Record<string, { count: number }>;
   rides: RideLog[];
   plan?: TrainingPlan;
+  promotions?: Promotion[];
 }
 
 // ---- training load --------------------------------------------------------
@@ -224,6 +225,59 @@ export const weekday = (day: number) => (((day + 4) % 7) + 7) % 7;
 /** Day index of the Monday starting the week that contains `day`. */
 export const weekStart = (day: number) => day - ((weekday(day) + 6) % 7);
 
+// ---- training blocks ---------------------------------------------------------
+// A plan runs in 4-week blocks: three build weeks with rising load, then a recovery week that ends with an
+// FTP retest. Passing the retest promotes the rider (replacing the old every-5-levels promotion trials).
+
+export const BLOCK_WEEKS = 4;
+/** Weekly load relative to the plan's base target, per week of the block. */
+export const BLOCK_WEEK_LOAD = [1.0, 1.08, 1.15, 0.65];
+/** The retest window: the last RETEST_DAYS days of a block plus the first RETEST_DAYS of the next. */
+export const RETEST_DAYS = 3;
+
+export interface Promotion {
+  /** which plan the block belonged to (its createdAt) */
+  planCreatedAt: number;
+  block: number;
+  at: number;
+  oldFtp: number;
+  newFtp: number;
+}
+
+export interface BlockInfo {
+  /** 1-based block number since the plan started */
+  number: number;
+  /** 1-based week within the block */
+  week: number;
+  recovery: boolean;
+  /** day within the block, 0…27 */
+  dayInBlock: number;
+  /** block whose retest is open today, if any */
+  retestFor: number | null;
+}
+
+export const blockInfo = (plan: TrainingPlan, now = Date.now()): BlockInfo => blockInfoForDay(plan, dayIndex(now));
+
+function blockInfoForDay(plan: TrainingPlan, day: number): BlockInfo {
+  const start = weekStart(dayIndex(plan.createdAt));
+  const days = Math.max(0, day - start);
+  const len = BLOCK_WEEKS * 7;
+  const number = Math.floor(days / len) + 1;
+  const dayInBlock = days % len;
+  const week = Math.floor(dayInBlock / 7) + 1;
+  const retestFor = dayInBlock >= len - RETEST_DAYS ? number : dayInBlock < RETEST_DAYS && number > 1 ? number - 1 : null;
+  return { number, week, recovery: week === BLOCK_WEEKS, dayInBlock, retestFor };
+}
+
+/** Load factor for the week containing `day` (1 before the plan started). */
+function weekLoad(plan: TrainingPlan, day: number): number {
+  if (day < weekStart(dayIndex(plan.createdAt))) return 1;
+  return BLOCK_WEEK_LOAD[blockInfoForDay(plan, day).week - 1];
+}
+
+export const isPromoted = (promotions: Promotion[] | undefined, plan: TrainingPlan, block: number) =>
+  !!promotions?.some((p) => p.planCreatedAt === plan.createdAt && p.block === block);
+
 export interface WeekDay {
   day: number;
   weekday: number;
@@ -249,13 +303,15 @@ export function weekProgress(rides: RideLog[], plan: TrainingPlan, now = Date.no
   const today = dayIndex(now);
   const daily = new Map<number, number>();
   for (const r of rides) daily.set(dayIndex(r.startedAt), (daily.get(dayIndex(r.startedAt)) ?? 0) + rideTss(r));
-  const target = weeklyTargetTss(plan);
+  const base = weeklyTargetTss(plan);
+  const targetFor = (weekStartDay: number) => Math.round((base * weekLoad(plan, weekStartDay)) / 10) * 10;
   const weekTss = (start: number) => {
     let t = 0;
     for (let d = start; d < start + 7; d++) t += daily.get(d) ?? 0;
     return t;
   };
   const start = weekStart(today);
+  const target = targetFor(start);
   const days: WeekDay[] = Array.from({ length: 7 }, (_, i) => {
     const day = start + i;
     return { day, weekday: weekday(day), plannedMin: plan.minutesByDay[weekday(day)], tss: Math.round(daily.get(day) ?? 0), isToday: day === today };
@@ -264,7 +320,8 @@ export function weekProgress(rides: RideLog[], plan: TrainingPlan, now = Date.no
   const thisWeekDone = target > 0 && tss >= target * STREAK_FRACTION;
   let streak = thisWeekDone ? 1 : 0;
   for (let w = start - 7; w >= start - 7 * 104; w -= 7) {
-    if (target > 0 && weekTss(w) >= target * STREAK_FRACTION) streak++;
+    const t = targetFor(w);
+    if (t > 0 && weekTss(w) >= t * STREAK_FRACTION) streak++;
     else break;
   }
   return { tss, target, days, streak, thisWeekDone };
@@ -341,7 +398,10 @@ export function suggestToday(p: CoachProfile, now = Date.now()): Suggestion {
   const plan = p.plan;
   const rules = plan ? GOALS[plan.goal] : DEFAULT_RULES;
   const weekend = dow === 0 || dow === 6;
-  const dayMin = plan ? plan.minutesByDay[dow] : weekend ? WEEKEND_MAX_MIN : WEEKDAY_MAX_MIN;
+  const block = plan ? blockInfo(plan, now) : null;
+  const planned = plan ? plan.minutesByDay[dow] : weekend ? WEEKEND_MAX_MIN : WEEKDAY_MAX_MIN;
+  // Recovery week: a quarter less riding time.
+  const dayMin = block?.recovery ? Math.round(planned * 0.75) : planned;
   const load = trainingLoad(p.rides, now);
   const attempts = workoutAttempts(p.rides);
   const recovery = challengeById('wk-recovery-30')!;
@@ -394,9 +454,19 @@ export function suggestToday(p: CoachProfile, now = Date.now()): Suggestion {
     };
   }
 
+  // 6. End of a training block: FTP retest for promotion.
+  if (plan && block?.retestFor && !isPromoted(p.promotions, plan, block.retestFor) && (daysToEvent == null || daysToEvent > 7)) {
+    const rank = (p.promotions?.length ?? 0) + 1;
+    return {
+      workout: RAMP_TEST,
+      kind: 'test',
+      reason: `Training block ${block.retestFor} is done. Retest your FTP: pass the Ramp Test to be promoted to Rank ${roman(rank)} and reset your targets to your new fitness.`,
+    };
+  }
+
   const hardDays = new Set(p.rides.filter((r) => dayIndex(r.startedAt) < today && isHardRide(r)).map((r) => dayIndex(r.startedAt)));
   const hardThisWeek = [...hardDays].filter((d) => d >= today - 7).length;
-  const hardBudget = hardPerWeek(plan);
+  const hardBudget = block?.recovery ? 1 : hardPerWeek(plan);
   const easy = (reason: string): Suggestion => {
     if (plan) return { workout: fitZ2(Math.min(dayMin, 90)), kind: 'endurance', reason };
     const { workout } = progressIn('endurance', attempts, weekend ? WEEKEND_MAX_MIN : 60, pureZ2);
@@ -414,6 +484,9 @@ export function suggestToday(p: CoachProfile, now = Date.now()): Suggestion {
   }
 
   // 8. Intensity budget used up.
+  if (block?.recovery && hardThisWeek >= hardBudget) {
+    return easy('Recovery week: lighter training lets your body absorb the block, so you arrive fresh for your FTP retest.');
+  }
   if (hardThisWeek >= hardBudget) {
     const days = hardThisWeek === 1 ? '1 hard day' : `${hardThisWeek} hard days`;
     return easy(`You've had ${days} in the last week${plan ? `, which is what your ${rules.name.toLowerCase()} plan calls for` : ''}. Keep the rest easy: most of your riding should be in Zone 2.`);

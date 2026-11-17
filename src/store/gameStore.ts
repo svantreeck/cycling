@@ -4,11 +4,11 @@ import { MockTrainer } from '../ble/mockTrainer';
 import type { Trainer, TrainerSample, Unsubscribe } from '../ble/trainer';
 import { tiersReached, type AvatarTier } from '../game/avatarTiers';
 import { ChallengeRun, type RunResult, type RunSnapshot, type TrainerCommand } from '../game/challengeEngine';
-import { challengeById, dailyBounty, RAMP_TEST, type Challenge, type FitnessSystem } from '../game/challenges';
-import type { Feel } from '../game/coach';
-import { challengeReward } from '../game/rewards';
+import { challengeById, dailyBounty, RAMP_TEST, roman, type Challenge, type FitnessSystem } from '../game/challenges';
+import { blockInfo, isPromoted, type Feel } from '../game/coach';
+import { challengeReward, promotionXp } from '../game/rewards';
 import { addStats, statGains, statLevel, SYSTEMS } from '../game/stats';
-import { addXp, clearPromotion, isBlockedAtGate, rideXp, xpToNext, type AddXpResult } from '../game/xp';
+import { addXp, rideXp, type AddXpResult } from '../game/xp';
 import { zoneFor } from '../game/zones';
 import {
   defaultProfile,
@@ -55,7 +55,7 @@ export interface LiveRide {
 
 export type Celebration =
   | { kind: 'levelUp'; levels: number[]; tiers: AvatarTier[] }
-  | { kind: 'gate'; level: number }
+  | { kind: 'promotion'; rank: number; block: number; oldFtp: number; newFtp: number; xp: number }
   | { kind: 'stat'; system: FitnessSystem; level: number };
 
 export interface RunOutcome {
@@ -66,6 +66,8 @@ export interface RunOutcome {
   oldFtp: number;
   /** post-workout check-in, once answered */
   feel?: Feel;
+  /** set when this ramp test completed a training block */
+  promotion?: { rank: number; block: number };
 }
 
 interface GameState {
@@ -132,7 +134,7 @@ export const useGame = create<GameState>((set, get) => {
     }
   };
 
-  /** Fold an addXp/clearPromotion result into state, queueing celebrations. */
+  /** Fold an addXp result into state, queueing level-up celebrations. */
   const applyLevelResult = (profile: Profile, res: AddXpResult): Profile => {
     const before = profile.levels;
     const next = { ...profile, levels: res.state };
@@ -144,9 +146,6 @@ export const useGame = create<GameState>((set, get) => {
         tiers: tiersReached(before.level, res.state.level),
       });
     }
-    // Announce the gate once: the first time the bar fills, not on every sample while capped.
-    const wasCapped = isBlockedAtGate(before) && before.xp >= xpToNext(before.level);
-    if (res.hitGate && !wasCapped) celebrations.push({ kind: 'gate', level: res.state.level });
     if (celebrations.length) {
       set((s) => ({ celebrations: [...s.celebrations, ...celebrations] }));
       persist(next);
@@ -187,8 +186,18 @@ export const useGame = create<GameState>((set, get) => {
       next.ftp = result.newFtp;
       next.ftpHistory = [...next.ftpHistory, { at: Date.now(), ftp: result.newFtp }];
     }
-    if (result.passed && challenge.promotionFor != null) {
-      next = applyLevelResult(next, clearPromotion(next.levels, challenge.promotionFor));
+    // Passing the retest at the end of a training block earns a promotion.
+    let promotion: RunOutcome['promotion'];
+    const block = next.plan ? blockInfo(next.plan) : null;
+    if (result.passed && challenge.id === RAMP_TEST.id && next.plan && block?.retestFor && !isPromoted(next.promotions, next.plan, block.retestFor)) {
+      const rank = next.promotions.length + 1;
+      const bonus = promotionXp(rank);
+      const newFtp = result.newFtp ?? profile.ftp;
+      next.promotions = [...next.promotions, { planCreatedAt: next.plan.createdAt, block: block.retestFor, at: Date.now(), oldFtp: profile.ftp, newFtp }];
+      reward.xp += bonus;
+      reward.lines.push(`Block ${block.retestFor} complete: promoted to Rank ${roman(rank)}! +${bonus} XP`);
+      promotion = { rank, block: block.retestFor };
+      set((s) => ({ celebrations: [...s.celebrations, { kind: 'promotion', rank, block: block.retestFor!, oldFtp: profile.ftp, newFtp, xp: bonus }] }));
     }
     if (reward.xp > 0) next = applyLevelResult(next, addXp(next.levels, reward.xp));
 
@@ -197,7 +206,7 @@ export const useGame = create<GameState>((set, get) => {
       profile: next,
       run: null,
       runSnap: snap,
-      outcome: { challenge, result, xp: reward.xp, lines: reward.lines, oldFtp: profile.ftp },
+      outcome: { challenge, result, xp: reward.xp, lines: reward.lines, oldFtp: profile.ftp, promotion },
       ride: ride
         ? { ...ride, xp: ride.xp + reward.xp, challenges: [...ride.challenges, { id: challenge.id, passed: result.passed, xp: reward.xp }] }
         : ride,

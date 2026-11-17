@@ -1,4 +1,4 @@
-import { addXp, clearPromotion, initialLevelState, isBlockedAtGate, rideXp, xpToNext } from './xp';
+import { addXp, initialLevelState, releaseBankedXp, rideXp, xpToNext } from './xp';
 
 describe('xp curve', () => {
   it('grows with level', () => {
@@ -24,40 +24,21 @@ describe('addXp', () => {
     expect(levelsGained).toEqual([2, 3]);
   });
 
-  it('caps at the level-5 gate and banks the overflow', () => {
+  it('has no level gates any more', () => {
     const s = { ...initialLevelState(), level: 5, xp: 0 };
-    const { state, hitGate, levelsGained } = addXp(s, xpToNext(5) + 500);
-    expect(hitGate).toBe(true);
-    expect(levelsGained).toEqual([]);
-    expect(state.level).toBe(5);
-    expect(state.xp).toBe(xpToNext(5));
-    expect(state.bankedXp).toBe(500);
-    expect(isBlockedAtGate(state)).toBe(true);
-  });
-
-  it('passes the gate if already cleared', () => {
-    const s = { ...initialLevelState(), level: 5, promotionsCleared: [5] };
-    expect(addXp(s, xpToNext(5)).state.level).toBe(6);
+    expect(addXp(s, xpToNext(5) + 10).state).toMatchObject({ level: 6, xp: 10 });
   });
 });
 
-describe('clearPromotion', () => {
-  it('promotes from a full bar and releases banked XP without double counting', () => {
-    const s0 = { ...initialLevelState(), level: 5 };
-    const capped = addXp(s0, xpToNext(5) + 50).state;
-    const { state, levelsGained } = clearPromotion(capped, 5);
-    expect(levelsGained).toEqual([6]);
-    expect(state.level).toBe(6);
-    expect(state.xp).toBe(50);
-    expect(state.bankedXp).toBe(0);
-    expect(state.totalXp).toBe(capped.totalXp);
+describe('releaseBankedXp', () => {
+  it('applies XP banked at an old gate (and a full bar) without double counting', () => {
+    const capped = { ...initialLevelState(), level: 5, xp: xpToNext(5), bankedXp: 50, totalXp: 9999 };
+    const s = releaseBankedXp(capped);
+    expect(s).toMatchObject({ level: 6, xp: 50, bankedXp: 0, totalXp: 9999 });
   });
 
-  it('clearing before the bar is full just removes the gate', () => {
-    const s = { ...initialLevelState(), level: 5, xp: 10 };
-    const { state, levelsGained } = clearPromotion(s, 5);
-    expect(levelsGained).toEqual([]);
-    expect(state.level).toBe(5);
-    expect(isBlockedAtGate(state)).toBe(false);
+  it('leaves normal progress alone', () => {
+    const s = { ...initialLevelState(), level: 3, xp: 20, totalXp: 500 };
+    expect(releaseBankedXp(s)).toEqual(s);
   });
 });

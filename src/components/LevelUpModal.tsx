@@ -1,39 +1,33 @@
-import { promotionChallenge } from '../game/challenges';
+import { roman } from '../game/challenges';
 import { SYSTEM_INFO } from '../game/stats';
 import { useGame } from '../store/gameStore';
 import { Avatar } from './Avatar';
 
 export function CelebrationModal() {
-  const { celebrations, dismissCelebration, profile, setScreen } = useGame();
+  const { celebrations, dismissCelebration, profile } = useGame();
   const c = celebrations[0];
   if (!c) return null;
 
-  if (c.kind === 'gate') {
-    const promo = promotionChallenge(c.level);
+  if (c.kind === 'promotion') {
     return (
       <div className="modal-backdrop">
-        <div className="modal gate">
-          <div className="big-emoji">🚧</div>
-          <h2>Level cap reached</h2>
+        <div className="modal levelup promotion">
+          <div className="big-emoji">🎖️</div>
+          <div className="levelup-burst">PROMOTED!</div>
+          <div className="levelup-num">Rank {roman(c.rank)}</div>
           <p>
-            You need to pass <strong>{promo.name}</strong> to get past level {c.level}. XP you earn until then is banked and added
-            once you're promoted.
+            You completed training block {c.block} and passed your FTP retest.
+            {c.newFtp !== c.oldFtp && (
+              <>
+                {' '}
+                FTP {c.oldFtp} W → <strong>{c.newFtp} W</strong>.
+              </>
+            )}
           </p>
-          <p className="muted">{promo.description}</p>
-          <div className="modal-actions">
-            <button className="btn ghost" onClick={dismissCelebration}>
-              Later
-            </button>
-            <button
-              className="btn primary"
-              onClick={() => {
-                dismissCelebration();
-                setScreen('challenges');
-              }}
-            >
-              See challenge
-            </button>
-          </div>
+          <p className="muted">Your next block starts now, with targets set from your new FTP. +{c.xp} XP</p>
+          <button className="btn primary" onClick={dismissCelebration}>
+            Let's go!
+          </button>
         </div>
       </div>
     );

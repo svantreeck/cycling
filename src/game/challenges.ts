@@ -1,5 +1,3 @@
-import { PROMOTION_EVERY } from './xp';
-
 export type StepMode = 'erg' | 'free';
 export type StepKind = 'warmup' | 'work' | 'rest' | 'effort' | 'cooldown';
 
@@ -49,8 +47,6 @@ export interface Challenge {
   tier: number;
   minLevel: number;
   xpReward: number;
-  /** gate level this challenge clears */
-  promotionFor?: number;
   repeatable: boolean;
   steps: Step[];
   success: SuccessRule;
@@ -211,26 +207,6 @@ export const CHALLENGES: Challenge[] = [
     ]).flat(),
   ]),
 ];
-
-/** Promotion challenge that unlocks progress past `gateLevel` (5, 10, 15, …). Difficulty scales with the gate. */
-export function promotionChallenge(gateLevel: number): Challenge {
-  const n = gateLevel / PROMOTION_EVERY; // 1, 2, 3…
-  const reps = Math.min(3 + n, 8);
-  const pct = Math.min(105 + 3 * n, 125);
-  const workSec = Math.min(90 + 30 * n, 300);
-  return {
-    id: `promo-${gateLevel}`,
-    name: `Promotion Trial ${roman(n)}`,
-    description: `Pass this to move past level ${gateLevel}: ${reps} × ${fmtDur(workSec)} at ${pct}% FTP. If you stop pedalling, you fail.`,
-    tier: n,
-    minLevel: gateLevel,
-    xpReward: 250 + 150 * n,
-    promotionFor: gateLevel,
-    repeatable: false,
-    steps: [...warmup(6), ...intervals(reps, workSec, pct, 120), ...cooldown()],
-    success: { kind: 'completeAll' },
-  };
-}
 
 // ---- training workouts --------------------------------------------------
 // Zones follow Coggan: Z2 endurance 56–75%, tempo 76–90%, sweet spot 88–94%, threshold 95–105%,
@@ -507,7 +483,6 @@ function withRungs(list: Challenge[]): Challenge[] {
 export const WORKOUTS: Challenge[] = withRungs(CATALOG);
 
 export function challengeById(id: string): Challenge | undefined {
-  if (id.startsWith('promo-')) return promotionChallenge(Number(id.slice(6)));
   return CHALLENGES.find((c) => c.id === id) ?? WORKOUTS.find((c) => c.id === id);
 }
 
@@ -532,7 +507,8 @@ export function fmtDur(sec: number): string {
   return s === 0 ? `${m} min` : `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function roman(n: number): string {
+/** Roman numerals for ranks and block numbers. */
+export function roman(n: number): string {
   const map: [number, string][] = [
     [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
   ];

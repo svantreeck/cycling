@@ -1,11 +1,13 @@
 import type { RunResult } from './challengeEngine';
-import { CHALLENGES, promotionChallenge, type Challenge } from './challenges';
-import { PROMOTION_EVERY } from './xp';
+import { CHALLENGES, type Challenge } from './challenges';
 
 export const REPEAT_FACTOR = 0.25;
 export const BOUNTY_FACTOR = 1.5;
 export const FTP_GAIN_XP_PER_WATT = 10;
 export const FTP_GAIN_XP_CAP = 300;
+
+/** Bonus for a block promotion (completing a 4-week block and passing the FTP retest). Grows with rank. */
+export const promotionXp = (rank: number) => 300 + 100 * (rank - 1);
 
 export interface RewardInput {
   challenge: Challenge;
@@ -62,24 +64,15 @@ export interface BoardEntry {
 /** Challenges to show on the board for a rider at `level`. */
 export function challengeBoard(
   level: number,
-  promotionsCleared: number[],
   completed: Record<string, { count: number }>,
   bountyId: string | undefined,
 ): BoardEntry[] {
-  const entries: BoardEntry[] = [];
-  // Promotion for the next uncleared gate, at the top.
-  const gate = Math.max(PROMOTION_EVERY, Math.ceil(level / PROMOTION_EVERY) * PROMOTION_EVERY);
-  const nextGate = promotionsCleared.includes(gate) ? gate + PROMOTION_EVERY : gate;
-  const promo = promotionChallenge(nextGate);
-  entries.push({ challenge: promo, availability: level >= promo.minLevel ? 'available' : 'locked', isBounty: false });
-
-  for (const c of CHALLENGES) {
+  return CHALLENGES.map((c) => {
     const done = (completed[c.id]?.count ?? 0) > 0;
-    entries.push({
+    return {
       challenge: c,
       availability: level < c.minLevel ? 'locked' : done && !c.repeatable ? 'completed' : 'available',
       isBounty: c.id === bountyId,
-    });
-  }
-  return entries;
+    };
+  });
 }

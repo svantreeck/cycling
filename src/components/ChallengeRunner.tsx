@@ -1,5 +1,5 @@
 import { CRACK_SEC } from '../game/challengeEngine';
-import { challengeById, fmtDur } from '../game/challenges';
+import { challengeById, fmtDur, roman } from '../game/challenges';
 import { useGame } from '../store/gameStore';
 import { stepColor, WorkoutProfile } from './WorkoutProfile';
 
@@ -131,7 +131,7 @@ function OutcomeCard({ onClose }: { onClose: () => void }) {
           )}
         </div>
       )}
-      {o.challenge.promotionFor && o.result.passed && <div className="promoted">🎖️ You're promoted! Levels past {o.challenge.promotionFor} are open.</div>}
+      {o.promotion && <div className="promoted">🎖️ Block {o.promotion.block} complete: you're promoted to Rank {roman(o.promotion.rank)}!</div>}
       <button className="btn primary" onClick={onClose}>
         Keep riding
       </button>
