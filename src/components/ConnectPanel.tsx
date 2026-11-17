@@ -1,10 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { isWebBluetoothAvailable } from '../ble/ftms';
 import { MockTrainer } from '../ble/mockTrainer';
 import { MockController, type ControllerAction } from '../ble/controller';
 import { inspectDevice, ZwiftClickController } from '../ble/zwiftClick';
 import { BUTTON_LABEL } from '../ble/zwiftProtocol';
 import { useGame } from '../store/gameStore';
+
+/** iPhone/iPad, including iPads that report a Mac user agent. */
+const isIOS = () =>
+  typeof navigator !== 'undefined' &&
+  (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.userAgent.includes('Macintosh') && navigator.maxTouchPoints > 1));
 
 export function ConnectionChip() {
   const { conn, trainer, setScreen } = useGame();
@@ -58,8 +63,17 @@ export function ConnectPanel() {
     <div className="card connect">
       {!bt && (
         <div className="banner">
-          This browser doesn't support Web Bluetooth. Use <strong>Chrome</strong> or <strong>Edge</strong> on desktop or Android, or
-          try the simulator.
+          {isIOS() ? (
+            <>
+              Safari can't use Bluetooth on iPad or iPhone. Open this page in <strong>Bluefy</strong> (free on the App Store) to connect your
+              trainer and Click, or try the simulator.
+            </>
+          ) : (
+            <>
+              This browser doesn't support Web Bluetooth. Use <strong>Chrome</strong> or <strong>Edge</strong> on desktop or Android, or try the
+              simulator.
+            </>
+          )}
         </div>
       )}
       <button className="btn primary" disabled={!bt || conn === 'connecting'} onClick={() => void connectBluetooth()}>
@@ -221,7 +235,21 @@ function ZwiftClickPanel({ click }: { click: ZwiftClickController }) {
   const pods = click.podInfo;
   const hasLeft = pods.some((p) => p.side === 'left');
   const lines = [...click.log.map((l) => `${new Date(l.at).toLocaleTimeString()} ${l.pod} ${l.dir === 'in' ? '←' : l.dir === 'out' ? '→' : '·'} ${l.text}`), ...inspectLog];
-  const copy = () => void navigator.clipboard.writeText(lines.join('\n'));
+  const logRef = useRef<HTMLPreElement>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      setCopied('Copied');
+    } catch {
+      // Some iOS browsers block clipboard access: select the log so it can be copied by hand.
+      const sel = window.getSelection();
+      if (logRef.current && sel) {
+        sel.selectAllChildren(logRef.current);
+        setCopied('Selected: use Copy from the menu');
+      }
+    }
+  };
   const inspect = (sendRideOn: boolean) =>
     void inspectDevice((t) => setInspectLog((l) => [...l.slice(-199), `${new Date().toLocaleTimeString()} inspect · ${t}`]), sendRideOn).catch((e) =>
       setInspectLog((l) => [...l, `inspect failed: ${(e as Error).message}`]),
@@ -268,8 +296,8 @@ function ZwiftClickPanel({ click }: { click: ZwiftClickController }) {
         </button>
         {showLog && (
           <>
-            <button className="btn ghost small" onClick={copy}>
-              Copy log
+            <button className="btn ghost small" onClick={() => void copy()}>
+              {copied ?? 'Copy log'}
             </button>
             <button className="btn ghost small" onClick={() => inspect(false)} title="Connect to any device (e.g. your KICKR) and log its services and Zwift notifications">
               Inspect a device…
@@ -280,7 +308,11 @@ function ZwiftClickPanel({ click }: { click: ZwiftClickController }) {
           </>
         )}
       </div>
-      {showLog && <pre className="ble-log">{lines.slice(-80).join('\n') || 'Nothing yet.'}</pre>}
+      {showLog && (
+        <pre ref={logRef} className="ble-log">
+          {lines.slice(-300).join('\n') || 'Nothing yet.'}
+        </pre>
+      )}
     </div>
   );
 }

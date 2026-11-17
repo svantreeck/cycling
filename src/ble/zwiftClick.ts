@@ -1,4 +1,5 @@
 import type { ControllerAction, Controller } from './controller';
+import { requestDeviceCompat, writeWithoutResponse, writeWithResponse } from './gatt';
 import { Emitter } from './trainer';
 import {
   BUTTON_LABEL,
@@ -143,11 +144,11 @@ class Pod {
   private async write(bytes: Uint8Array<ArrayBuffer>, what: string, quiet = false) {
     if (!this.rx) return;
     try {
-      await this.rx.writeValueWithResponse(bytes);
+      await writeWithResponse(this.rx, bytes);
       if (!quiet) this.log('out', `${what}: ${toHex(bytes)}`);
     } catch (e) {
       try {
-        await this.rx.writeValueWithoutResponse(bytes);
+        await writeWithoutResponse(this.rx, bytes);
         if (!quiet) this.log('out', `${what} (no response): ${toHex(bytes)}`);
       } catch {
         this.log('info', `${what} write failed: ${(e as Error).message}`);
@@ -252,10 +253,12 @@ export class ZwiftClickController implements Controller {
 
   /** Prompt for a pod and connect it. Call again to add the other side. */
   async connect(): Promise<void> {
-    const device = await navigator.bluetooth.requestDevice({
-      filters: [{ manufacturerData: [{ companyIdentifier: ZWIFT_COMPANY_ID }] }, { namePrefix: 'Zwift' }],
-      optionalServices: [ZWIFT_RIDE_SERVICE, ZWIFT_CUSTOM_SERVICE],
-    });
+    const optionalServices = [ZWIFT_RIDE_SERVICE, ZWIFT_CUSTOM_SERVICE];
+    const device = await requestDeviceCompat([
+      { filters: [{ manufacturerData: [{ companyIdentifier: ZWIFT_COMPANY_ID }] }, { namePrefix: 'Zwift' }], optionalServices },
+      // iOS Web Bluetooth browsers may not support manufacturerData filters.
+      { filters: [{ namePrefix: 'Zwift' }], optionalServices },
+    ]);
     let pod = this.pods.find((p) => p.device.id === device.id);
     if (pod?.info.state === 'connected') {
       this.addLog({ at: Date.now(), pod: pod.label(), dir: 'info', text: 'already connected (pick the other side to add it)' });
@@ -369,7 +372,7 @@ export async function inspectDevice(log: (text: string) => void, sendRideOn: boo
     }
     const rx = chars.find((c) => c.uuid === ZWIFT_SYNC_RX);
     if (sendRideOn && rx) {
-      await rx.writeValueWithResponse(handshake(true)).then(
+      await writeWithResponse(rx, handshake(true)).then(
         () => log('sent RideOn'),
         (e) => log(`RideOn failed: ${(e as Error).message}`),
       );

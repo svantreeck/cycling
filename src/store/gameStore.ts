@@ -13,6 +13,7 @@ import { challengeReward, promotionXp } from '../game/rewards';
 import { addStats, statGains, statLevel, SYSTEMS } from '../game/stats';
 import { addXp, rideXp, type AddXpResult } from '../game/xp';
 import { zoneFor } from '../game/zones';
+import { keepScreenAwake } from '../wakeLock';
 import {
   defaultProfile,
   exportProfile,
@@ -376,6 +377,7 @@ export const useGame = create<GameState>((set, get) => {
 
     startRide: () => {
       if (get().ride) return;
+      keepScreenAwake(true);
       set({
         ride: {
           startedAt: Date.now(),
@@ -401,6 +403,7 @@ export const useGame = create<GameState>((set, get) => {
       if (!ride) return;
       sendCommands([{ type: 'free' }]);
       ergOff();
+      keepScreenAwake(false);
       const summary: RideSummary = {
         id: `${ride.startedAt}`,
         startedAt: ride.startedAt,

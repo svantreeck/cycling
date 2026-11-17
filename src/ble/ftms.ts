@@ -16,6 +16,8 @@ import {
   parseIndoorBikeData,
 } from './ftmsParsers';
 
+import { writeWithResponse } from './gatt';
+
 export const isWebBluetoothAvailable = () =>
   typeof navigator !== 'undefined' && 'bluetooth' in navigator;
 
@@ -168,7 +170,7 @@ export class BluetoothTrainer implements Trainer {
           }
         }, RESPONSE_TIMEOUT_MS);
       });
-      await cp.writeValueWithResponse(bytes as BufferSource);
+      await writeWithResponse(cp, bytes as BufferSource);
       return response;
     };
     const p = this.writeChain.then(run, run);
