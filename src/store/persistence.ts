@@ -19,6 +19,8 @@ export interface RideSummary {
   zoneSec: number[];
   xpEarned: number;
   challenges: { id: string; passed: boolean; xp: number }[];
+  /** training stress score; missing on rides saved before it was tracked */
+  tss?: number;
 }
 
 export interface ChallengeRecord {

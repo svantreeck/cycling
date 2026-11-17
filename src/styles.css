@@ -228,3 +228,20 @@ input[type='range'] { padding: 0; }
   .metric.big { grid-column: span 2; }
   .topbar { flex-wrap: wrap; }
 }
+
+/* today's ride */
+.today { border: 1px solid rgba(79, 195, 247, 0.35); background: linear-gradient(160deg, var(--panel), #16203d); display: flex; flex-direction: column; gap: 10px; }
+.today h2 { margin: 0; }
+.today-head { display: flex; align-items: center; gap: 10px; }
+.today-reason { margin: 0; font-size: 1rem; }
+.today-workout { display: flex; flex-direction: column; gap: 6px; }
+.today-title { display: flex; align-items: center; gap: 8px; }
+.today-title h3 { margin: 0; }
+.today-actions { display: flex; flex-direction: column; gap: 8px; }
+.swap-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.swap-row .chip:disabled { opacity: 0.35; cursor: default; }
+.load-strip { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); }
+.load-strip strong { color: var(--text); }
+.load-strip .form-fresh { color: #2ecc71; }
+.load-strip .form-building { color: #f1c40f; }
+.load-strip .form-overreaching { color: var(--danger); }

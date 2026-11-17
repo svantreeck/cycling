@@ -4,6 +4,7 @@ import { Avatar } from './components/Avatar';
 import { ConnectionChip, ConnectPanel, SimControls } from './components/ConnectPanel';
 import { CelebrationModal } from './components/LevelUpModal';
 import { ProfileScreen } from './components/Profile';
+import { TodayCard } from './components/TodayCard';
 import { RideScreen } from './components/RideHUD';
 import { XPBar } from './components/XPBar';
 import { nextTier, tierFor } from './game/avatarTiers';
@@ -13,7 +14,7 @@ import { activeBounty, useGame, type Screen } from './store/gameStore';
 const TABS: { id: Screen; label: string }[] = [
   { id: 'home', label: 'Home' },
   { id: 'ride', label: 'Ride' },
-  { id: 'challenges', label: 'Challenges' },
+  { id: 'challenges', label: 'Train' },
   { id: 'profile', label: 'Profile' },
 ];
 
@@ -84,6 +85,8 @@ function Home() {
 
       <ConnectPanel />
 
+      <TodayCard />
+
       <div className="home-actions">
         <button
           className="btn primary big"
@@ -96,7 +99,7 @@ function Home() {
           🚴 {ride ? 'Back to ride' : 'Free ride'}
         </button>
         <button className="btn big" onClick={() => setScreen('challenges')}>
-          ⚡ Challenges
+          ⚡ Workouts & challenges
         </button>
       </div>
 

@@ -43,6 +43,8 @@ export interface LiveRide {
   joules: number;
   maxPower: number;
   zoneSec: number[];
+  /** Σ (power / FTP)² × seconds; TSS = stress / 36 */
+  stress: number;
   lastT: number | null;
   idleMs: number;
   paused: boolean;
@@ -216,6 +218,7 @@ export const useGame = create<GameState>((set, get) => {
           joules: ride.joules + sample.power * (dt / 1000),
           maxPower: Math.max(ride.maxPower, sample.power),
           zoneSec,
+          stress: ride.stress + (sample.power / profile.ftp) ** 2 * (dt / 1000),
           xp: ride.xp + gained,
         };
         if (gained > 0) profile = applyLevelResult(profile, addXp(profile.levels, gained));
@@ -313,6 +316,7 @@ export const useGame = create<GameState>((set, get) => {
           joules: 0,
           maxPower: 0,
           zoneSec: [0, 0, 0, 0, 0, 0, 0],
+          stress: 0,
           lastT: null,
           idleMs: 0,
           paused: false,
@@ -339,6 +343,7 @@ export const useGame = create<GameState>((set, get) => {
         zoneSec: ride.zoneSec.map(Math.round),
         xpEarned: Math.round(ride.xp),
         challenges: ride.challenges,
+        tss: Math.round(ride.stress / 36),
       };
       const next = ride.elapsedSec >= 60 ? { ...profile, rides: [...profile.rides, summary] } : profile;
       persist(next);
