@@ -330,7 +330,7 @@ input[type='range'] { padding: 0; }
 
 /* Ride export */
 .ride-export { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
-.btn.strava { background: #fc4c02; border-color: #fc4c02; color: #fff; text-decoration: none; }
+.ride-export a.btn { text-decoration: none; }
 @media (max-width: 520px) { .summary-grid { grid-template-columns: repeat(2, 1fr); } }
 
 /* Devices card: trainer + virtual shifters */

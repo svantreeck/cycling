@@ -183,7 +183,7 @@ export const CHALLENGES: Challenge[] = [
   }),
   erg('3030-x10', '30/30 Classic', '10 × 30 s at 120% FTP with 30 s recovery.', 2, 7, 220, intervals(10, 30, 120, 30)),
   // Tier 3 — levels 10–14
-  erg('tabata', 'Tabata', '8 × 20 s at 150% FTP with 10 s rest. Very short and very hard.', 3, 10, 300, intervals(8, 20, 150, 10, 40)),
+  erg('tabata', 'Twenty-Tens', '8 × 20 s at 150% FTP with 10 s rest. Very short and very hard.', 3, 10, 300, intervals(8, 20, 150, 10, 40)),
   erg('4x4', 'Norwegian 4×4', '4 × 4 min at 110% FTP with 3 min recovery.', 3, 11, 350, intervals(4, 240, 110, 180)),
   free('best-minute', 'Minute Man', 'Average 120% of FTP for one full minute.', 3, 12, 300, 120, {
     kind: 'bestAvg',

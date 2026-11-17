@@ -28,7 +28,7 @@ export function RideExport({ ride, compact = false }: { ride: RideSummary; compa
         <button className="btn" onClick={run}>
           Export .tcx
         </button>
-        <a className="btn strava" href={STRAVA_UPLOAD_URL} target="_blank" rel="noreferrer">
+        <a className="btn" href={STRAVA_UPLOAD_URL} target="_blank" rel="noreferrer">
           Upload on Strava ↗
         </a>
       </div>

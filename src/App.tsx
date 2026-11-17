@@ -70,7 +70,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="logo">⚡ Cycling Quest</div>
+        <div className="logo">⚡ Cadence Quest</div>
         <nav>
           {TABS.map((t) => (
             <button key={t.id} className={`tab ${screen === t.id ? 'active' : ''}`} onClick={() => setScreen(t.id)}>
@@ -168,7 +168,7 @@ function Onboarding() {
   return (
     <div className="modal-backdrop">
       <div className="modal">
-        <h2>Welcome to Cycling Quest ⚡</h2>
+        <h2>Welcome to Cadence Quest ⚡</h2>
         <p>
           You earn XP for every minute you ride, and more in harder zones. Set a goal and the coach suggests a ride each
           day. Train in 4-week blocks and pass the FTP retest at the end of each one to get promoted. Your avatar gets new gear

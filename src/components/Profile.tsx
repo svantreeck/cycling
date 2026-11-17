@@ -22,7 +22,7 @@ export function ProfileScreen() {
     const blob = new Blob([exportJson()], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `cycling-quest-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `cadence-quest-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -159,6 +159,19 @@ export function ProfileScreen() {
             </tbody>
           </table>
         )}
+      </div>
+
+      <div className="card">
+        <h3>About</h3>
+        <p className="muted small">
+          Cadence Quest is a free, open-source hobby project (
+          <a href="https://github.com/svantreeck/cycling" target="_blank" rel="noreferrer">
+            source on GitHub
+          </a>
+          , BSD 3-Clause license). It is not affiliated with or endorsed by Zwift, Wahoo, Strava or any other company
+          mentioned; their names are used only to say which devices and services it works with. Training guidance here is
+          general information, not medical advice: check with a doctor before starting hard training.
+        </p>
       </div>
 
       <div className="card">

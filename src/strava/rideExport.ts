@@ -9,20 +9,20 @@ export const STRAVA_UPLOAD_URL = 'https://www.strava.com/upload/select';
 /** Activity title: the main workout ridden, if any. */
 export function rideTitle(r: RideSummary): string {
   const done = r.challenges.filter((c) => c.passed).map((c) => challengeById(c.id)?.name).filter(Boolean);
-  return done.length ? `Cycling Quest: ${done.join(' + ')}` : 'Cycling Quest ride';
+  return done.length ? `Cadence Quest: ${done.join(' + ')}` : 'Cadence Quest ride';
 }
 
 export function rideNotes(r: RideSummary): string {
   const parts = [`${r.avgPower} W avg`, `${r.kj} kJ`];
   if (r.tss != null) parts.push(`TSS ${r.tss}`);
   parts.push(`+${r.xpEarned} XP`);
-  return `${parts.join(' · ')}. Ridden in Cycling Quest.`;
+  return `${parts.join(' · ')}. Ridden in Cadence Quest.`;
 }
 
 export const rideFileName = (r: RideSummary) => {
   const d = new Date(r.startedAt);
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `cycling-quest-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.tcx`;
+  return `cadence-quest-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.tcx`;
 };
 
 /** The ride as a TCX document, or null if its track wasn't kept (older rides, or pushed out by newer ones). */

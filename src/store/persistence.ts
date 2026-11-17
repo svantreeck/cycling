@@ -4,6 +4,7 @@ import { initialLevelState, releaseBankedXp, type LevelState } from '../game/xp'
 
 export type SpeedUnit = 'kmh' | 'mph';
 
+// Storage keys keep the earlier "cyclingquest" prefix so existing progress survives the rename.
 export const STORAGE_KEY = 'cyclingquest.profile';
 /** Key used before the rename; read once so existing progress carries over. */
 export const LEGACY_STORAGE_KEY = 'kickrquest.profile';
@@ -114,7 +115,7 @@ export function exportProfile(p: Profile): string {
 export function importProfile(json: string): Profile {
   const parsed = JSON.parse(json);
   if (typeof parsed !== 'object' || parsed == null || !('levels' in parsed)) {
-    throw new Error("That file doesn't look like a Cycling Quest profile.");
+    throw new Error("That file doesn't look like a Cadence Quest profile.");
   }
   return migrate(parsed);
 }
