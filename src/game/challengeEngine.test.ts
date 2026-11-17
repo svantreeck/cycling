@@ -1,6 +1,6 @@
 import type { TrainerSample } from '../ble/trainer';
 import { ChallengeRun, type TrainerCommand } from './challengeEngine';
-import { RAMP_TEST, WORKOUTS, challengeById, dailyBounty, trainingStress, type Challenge } from './challenges';
+import { RAMP_TEST, WORKOUTS, challengeById, dailyBounty, mainSetStress, totalDurationSec, trainingStress, type Challenge } from './challenges';
 
 const FTP = 200;
 
@@ -169,7 +169,7 @@ describe('promotion challenges', () => {
 });
 
 describe('workouts', () => {
-  const wk: Challenge = { ...simple, id: 'wk', workout: { category: 'endurance', focus: 'Zone 2', tss: 10 } };
+  const wk: Challenge = { ...simple, id: 'wk', workout: { category: 'endurance', focus: 'Zone 2', trains: ['endurance'], tss: 10, rung: 1, rungs: 1 } };
 
   it('never cracks: stopping pedalling pauses the clock, and the workout resumes after', () => {
     const run = new ChallengeRun(wk, FTP);
@@ -204,25 +204,67 @@ describe('workouts', () => {
     expect(run.snapshot().ruleProgress).toBeCloseTo(0.5, 1);
   });
 
-  it('catalog: unique ids, ERG throughout, warm-up first, cool-down last, sensible TSS', () => {
+  it('catalog: unique ids, warm-up first, cool-down last, every step has a target, sensible TSS', () => {
     const ids = new Set(WORKOUTS.map((w) => w.id));
     expect(ids.size).toBe(WORKOUTS.length);
     for (const w of WORKOUTS) {
       expect(challengeById(w.id)).toBe(w);
-      expect(w.steps.every((s) => s.mode === 'erg' && s.targetPctFtp != null)).toBe(true);
+      expect(w.steps.every((s) => s.targetPctFtp != null)).toBe(true);
+      // Only sprints use free resistance, and only for the sprint itself.
+      const free = w.steps.filter((s) => s.mode === 'free');
+      if (w.workout!.category === 'sprint') expect(free.every((s) => s.kind === 'effort')).toBe(true);
+      else expect(free).toEqual([]);
       expect(w.steps[0].kind).toBe('warmup');
       expect(w.steps[w.steps.length - 1].kind).toBe('cooldown');
       expect(w.workout!.tss).toBe(trainingStress(w.steps));
       expect(w.workout!.tss).toBeGreaterThan(5);
       expect(w.workout!.tss).toBeLessThan(150);
     }
-    // Zone 2 rides stay in Zone 2 (56–75%) for their main work.
-    for (const w of WORKOUTS.filter((w) => w.workout!.focus === 'Zone 2')) {
-      for (const s of w.steps.filter((s) => s.kind === 'work')) {
-        expect(s.targetPctFtp).toBeGreaterThanOrEqual(56);
-        expect(s.targetPctFtp).toBeLessThan(76);
+  });
+
+  it('catalog: work in each category stays in its power zone', () => {
+    const band: Partial<Record<string, [number, number]>> = {
+      tempo: [76, 90],
+      sweetspot: [88, 94],
+      threshold: [95, 105],
+      vo2max: [106, 120],
+      anaerobic: [121, 200],
+    };
+    for (const w of WORKOUTS) {
+      const work = w.steps.filter((s) => s.kind === 'work');
+      const b = w.workout!.focus === 'Zone 2' ? [56, 75] : band[w.workout!.category];
+      if (!b) continue;
+      for (const s of work) {
+        expect(s.targetPctFtp, `${w.id} ${s.label}`).toBeGreaterThanOrEqual(b[0]);
+        expect(s.targetPctFtp, `${w.id} ${s.label}`).toBeLessThanOrEqual(b[1]);
       }
     }
+  });
+
+  it('catalog: every category is a ladder of 3+ rungs ordered by main-set stress, with a ≤35-min option', () => {
+    const cats = new Set(WORKOUTS.map((w) => w.workout!.category));
+    expect([...cats].sort()).toEqual(['anaerobic', 'endurance', 'sprint', 'sweetspot', 'tempo', 'threshold', 'vo2max']);
+    for (const cat of cats) {
+      const ladder = WORKOUTS.filter((w) => w.workout!.category === cat).sort((a, b) => a.workout!.rung - b.workout!.rung);
+      expect(ladder.length, cat).toBeGreaterThanOrEqual(3);
+      expect(ladder.map((w) => w.workout!.rung)).toEqual(ladder.map((_, i) => i + 1));
+      expect(ladder.every((w) => w.workout!.rungs === ladder.length)).toBe(true);
+      for (let i = 1; i < ladder.length; i++) expect(mainSetStress(ladder[i].steps)).toBeGreaterThanOrEqual(mainSetStress(ladder[i - 1].steps));
+      expect(ladder.some((w) => totalDurationSec(w) <= 35 * 60), `${cat} short option`).toBe(true);
+    }
+  });
+
+  it('catalog: every fitness system is trained, and sweet spot counts for tempo and threshold', () => {
+    const trained = new Set(WORKOUTS.flatMap((w) => w.workout!.trains));
+    expect([...trained].sort()).toEqual(['anaerobic', 'endurance', 'tempo', 'threshold', 'vo2max']);
+    for (const w of WORKOUTS.filter((w) => w.workout!.category === 'sweetspot')) expect(w.workout!.trains).toEqual(['tempo', 'threshold']);
+  });
+
+  it('sprint workouts release the trainer for each sprint and complete', () => {
+    const run = new ChallengeRun(challengeById('wk-sprint-6x10')!, FTP);
+    const cmds = ride(run, (_, r) => ({ power: r.snapshot().targetWatts ?? 600, cadence: 100 }));
+    expect(run.snapshot().result?.passed).toBe(true);
+    expect(cmds.filter((c) => c.type === 'free').length).toBeGreaterThanOrEqual(6);
   });
 
   it('trainingStress: one hour at FTP is 100', () => {

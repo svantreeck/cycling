@@ -156,8 +156,15 @@ input[type='range'] { padding: 0; }
 .chip.active { background: var(--accent); color: #0b1020; font-weight: 700; }
 .timeline.small { height: 36px; padding: 3px; }
 .ch.workout.cat-endurance { border-top: 3px solid #3498db; }
+.ch.workout.cat-tempo { border-top: 3px solid #2ecc71; }
 .ch.workout.cat-sweetspot { border-top: 3px solid #f1c40f; }
-.ch.workout.cat-intervals { border-top: 3px solid #e67e22; }
+.ch.workout.cat-threshold { border-top: 3px solid #f39c12; }
+.ch.workout.cat-vo2max { border-top: 3px solid #e67e22; }
+.ch.workout.cat-anaerobic { border-top: 3px solid #e74c3c; }
+.ch.workout.cat-sprint { border-top: 3px solid #9b59b6; }
+.chip.small { font-size: 0.75rem; padding: 4px 10px; }
+.pill.rungs { letter-spacing: -1px; color: var(--accent); }
+.pill.rungs .dim { color: rgba(255, 255, 255, 0.18); }
 .paused-banner { background: var(--panel-2); color: var(--text); font-weight: 700; padding: 8px; border-radius: 8px; text-align: center; }
 
 /* profile */
